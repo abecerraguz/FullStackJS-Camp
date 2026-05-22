@@ -1,0 +1,256 @@
+---
+titulo: "Git y GitHub"
+descripcion: "Control de versiones con Git: flujo básico (init, add, commit, push), ramas, merge, SSH y trabajo colaborativo con Pull Requests en GitHub."
+tipo: "practica"
+modulo: 2
+duracion: "6h"
+objetivos:
+  - "Instalar y configurar Git con nombre y correo globales."
+  - "Ejecutar el flujo básico: init → add → commit → push."
+  - "Conectar un repositorio local con GitHub usando SSH."
+  - "Trabajar con ramas: crear, cambiar, fusionar y eliminar."
+  - "Colaborar mediante Pull Requests en GitHub."
+conceptosClave:
+  - "Repositorio (repo)"
+  - "Commit"
+  - "Rama (branch)"
+  - "Merge"
+  - "Remote"
+  - "Pull Request (PR)"
+  - "SSH"
+recursos:
+  - { nombre: "Pro Git — Libro oficial (gratuito)", url: "https://git-scm.com/book/es/v2" }
+  - { nombre: "Oh My Git! — Juego para aprender Git", url: "https://ohmygit.org/" }
+  - { nombre: "GitHub Docs — Conexión con SSH", url: "https://docs.github.com/es/authentication/connecting-to-github-with-ssh" }
+  - { nombre: "Atlassian Git Tutorial", url: "https://www.atlassian.com/es/git/tutorials" }
+---
+
+# Git y GitHub
+
+**Git** es un sistema de control de versiones distribuido. Te permite registrar el historial de cambios de tu código, trabajar en paralelo con ramas y colaborar con otros desarrolladores.
+
+**GitHub** es la plataforma más popular para alojar repositorios Git en la nube y facilitar la colaboración.
+
+---
+
+## 1. Instalación y configuración inicial
+
+### Verificar si Git está instalado
+
+```bash
+git --version
+# git version 2.44.0
+```
+
+### Configurar nombre y correo (una sola vez)
+
+```bash
+git config --global user.name "Tu Nombre"
+git config --global user.email "tu@correo.com"
+
+# Verificar la configuración
+git config --list
+```
+
+<Callout type="tip">
+El `user.email` debe coincidir con el email de tu cuenta de GitHub para que los commits aparezcan asociados a tu perfil.
+</Callout>
+
+---
+
+## 2. Flujo básico de Git
+
+```
+Directorio de trabajo  →  Staging Area  →  Repositorio local  →  GitHub
+   (archivos)              (git add)         (git commit)        (git push)
+```
+
+### Crear un repositorio nuevo
+
+```bash
+# Crear carpeta y entrar
+mkdir mi-proyecto && cd mi-proyecto
+
+# Inicializar el repositorio
+git init
+
+# Crear un archivo
+echo "# Mi Proyecto" > README.md
+
+# Ver el estado del repositorio
+git status
+```
+
+### Agregar archivos al staging area
+
+```bash
+# Agregar un archivo específico
+git add README.md
+
+# Agregar todos los cambios
+git add .
+
+# Ver qué está en staging
+git status
+```
+
+### Crear un commit
+
+```bash
+# Un commit es una "fotografía" del estado actual del proyecto
+git commit -m "feat: crear estructura inicial del proyecto"
+
+# Ver el historial de commits
+git log --oneline
+```
+
+<Callout type="tip">
+Escribe mensajes de commit descriptivos. Convención recomendada: `tipo: descripción en minúsculas`. Tipos comunes: `feat` (nueva función), `fix` (corrección), `docs` (documentación), `style` (formato), `refactor`.
+</Callout>
+
+---
+
+## 3. Conectar con GitHub (SSH)
+
+SSH es más seguro que HTTPS y no requiere ingresar contraseña en cada push.
+
+### Paso 1 — Generar una clave SSH
+
+```bash
+# macOS / Linux / Git Bash en Windows
+ssh-keygen -t ed25519 -C "tu@correo.com"
+# Presiona Enter en todas las preguntas para usar los valores por defecto
+```
+
+### Paso 2 — Copiar la clave pública
+
+```bash
+# macOS
+cat ~/.ssh/id_ed25519.pub | pbcopy
+
+# Linux
+cat ~/.ssh/id_ed25519.pub
+
+# Windows (Git Bash)
+cat ~/.ssh/id_ed25519.pub | clip
+```
+
+### Paso 3 — Agregar la clave en GitHub
+
+1. Ve a **GitHub → Settings → SSH and GPG keys → New SSH key**.
+2. Pega la clave copiada y guarda.
+
+### Paso 4 — Verificar conexión
+
+```bash
+ssh -T git@github.com
+# Hi TuUsuario! You've successfully authenticated...
+```
+
+### Paso 5 — Conectar el repo local con GitHub
+
+```bash
+# En GitHub: crear un nuevo repo vacío (sin README)
+git remote add origin git@github.com:tu-usuario/mi-proyecto.git
+
+# Subir los commits al remoto
+git push -u origin main
+```
+
+---
+
+## 4. Trabajar con ramas (branches)
+
+Las ramas permiten desarrollar funcionalidades de forma **aislada** sin afectar la rama principal.
+
+```bash
+# Ver ramas existentes (la activa tiene un *)
+git branch
+
+# Crear una nueva rama
+git branch feature/login
+
+# Cambiar a esa rama
+git checkout feature/login
+
+# Crear y cambiar en un solo comando (forma moderna)
+git switch -c feature/login
+
+# Hacer cambios, add y commit en la nueva rama
+git add .
+git commit -m "feat: implementar formulario de login"
+
+# Volver a la rama principal
+git switch main
+
+# Fusionar la rama feature en main
+git merge feature/login
+
+# Eliminar la rama (ya fue fusionada)
+git branch -d feature/login
+```
+
+---
+
+## 5. Comandos útiles del día a día
+
+```bash
+# Ver el estado del repositorio
+git status
+
+# Ver el historial resumido
+git log --oneline --graph --all
+
+# Ver diferencias de cambios no guardados
+git diff
+
+# Ver diferencias en staging
+git diff --staged
+
+# Guardar cambios temporalmente sin hacer commit
+git stash
+git stash pop   # recuperar los cambios
+
+# Etiquetas de versión
+git tag v1.0.0
+git push origin v1.0.0
+
+# Ver historial completo (útil para deshacer errores)
+git reflog
+```
+
+---
+
+## 6. Colaborar con Pull Requests
+
+El flujo colaborativo estándar en equipos profesionales:
+
+```
+1. fork (copiar el repo en tu cuenta de GitHub)
+   ↓
+2. git clone (clonar localmente)
+   ↓
+3. git switch -c feature/mi-cambio (crear rama)
+   ↓
+4. Hacer cambios + git add + git commit
+   ↓
+5. git push origin feature/mi-cambio
+   ↓
+6. Abrir Pull Request en GitHub
+   ↓
+7. Revisión de código (code review)
+   ↓
+8. Merge del PR a main
+```
+
+---
+
+## 7. Ejercicio de práctica
+
+1. Crea un repositorio local llamado `mi-portfolio`.
+2. Agrega un archivo `index.html` con una estructura HTML básica.
+3. Haz un primer commit con el mensaje `feat: estructura inicial del portfolio`.
+4. Crea una rama `feature/sobre-mi` y agrega una sección "Sobre mí" al HTML.
+5. Haz un commit en esa rama.
+6. Vuelve a `main` y fusiona la rama.
+7. Sube todo a un repositorio nuevo en GitHub.

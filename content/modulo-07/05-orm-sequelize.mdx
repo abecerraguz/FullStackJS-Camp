@@ -1,0 +1,338 @@
+---
+titulo: "ORM con Sequelize"
+tipo: proyecto
+duracion: 10h
+objetivos:
+  - Configurar una instancia Sequelize con pool de conexiones
+  - Definir modelos con DataTypes y validaciones declarativas
+  - "Sincronizar el esquema con db.sync({ alter: true })"
+  - Crear asociaciones hasMany / belongsTo con clave foránea
+  - Realizar operaciones CRUD con los métodos de Sequelize
+  - Integrar Sequelize en una arquitectura MVC con Express
+recursos:
+  - { nombre: "Sequelize v6 — documentación oficial", url: "https://sequelize.org/docs/v6/" }
+  - { nombre: "DataTypes — Sequelize", url: "https://sequelize.org/docs/v6/core-concepts/model-basics/#data-types" }
+  - { nombre: "Validaciones — Sequelize", url: "https://sequelize.org/docs/v6/core-concepts/validations-and-constraints/" }
+---
+
+# ORM con Sequelize
+
+## ¿Qué es un ORM?
+
+Un **ORM** (Object-Relational Mapper) permite interactuar con la base de datos usando objetos JavaScript en lugar de SQL. Sequelize es el ORM más usado con Node.js para PostgreSQL, MySQL y SQLite.
+
+```
+Sin ORM:
+  pool.query("INSERT INTO usuarios (nombre) VALUES ($1) RETURNING *", [nombre])
+
+Con Sequelize:
+  await Usuario.create({ nombre })
+```
+
+La diferencia va más allá de la sintaxis: Sequelize gestiona el esquema, las relaciones, las migraciones y las validaciones de forma declarativa.
+
+## Instalación
+
+```bash
+npm install sequelize pg pg-hstore dotenv
+```
+
+- `sequelize` — el ORM
+- `pg` — driver de PostgreSQL (Sequelize lo necesita internamente)
+- `pg-hstore` — necesario para serializar/deserializar tipos `hstore` de PostgreSQL
+- `dotenv` — variables de entorno
+
+## Configuración de la conexión
+
+```javascript
+// db/connection.js
+import { Sequelize } from "sequelize";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const db = new Sequelize(
+  process.env.PGDATABASELOCAL || process.env.PGDATABASE,
+  process.env.PGUSERLOCAL     || process.env.PGUSER,
+  process.env.PGPASSWORDLOCAL || process.env.PGPASSWORD,
+  {
+    host:    process.env.PGHOSTLOCAL || process.env.PGHOST,
+    port:    process.env.PGPORTLOCAL || process.env.PGPORT,
+    dialect: "postgres",
+
+    // Muestra el SQL generado en desarrollo; silencioso en producción
+    logging: process.env.NODE_ENV === "production" ? false : console.log,
+
+    pool: {
+      max:     5,     // conexiones simultáneas máximas
+      min:     0,     // conexiones mínimas en reposo
+      acquire: 30000, // ms máximo para obtener conexión
+      idle:    10000, // ms antes de liberar una conexión inactiva
+    },
+  }
+);
+
+export default db;
+```
+
+### Variables de entorno
+
+```bash
+# .env
+PORT=8000
+PGDATABASELOCAL=blogcms
+PGUSERLOCAL=postgres
+PGPASSWORDLOCAL=postgres
+PGHOSTLOCAL=localhost
+PGPORTLOCAL=5432
+```
+
+## Definir modelos
+
+Los modelos mapean a tablas. Cada campo define su tipo y sus validaciones:
+
+```javascript
+// models/Usuario.js
+import db from "../db/connection.js";
+import { DataTypes } from "sequelize";
+
+const Usuario = db.define(
+  "Usuario",          // Nombre del modelo (Sequelize pluraliza a "Usuarios" en la tabla)
+  {
+    nombre: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      validate: {
+        notEmpty: { msg: "El nombre no puede estar vacío." },
+        len: { args: [2, 100], msg: "El nombre debe tener entre 2 y 100 caracteres." },
+      },
+    },
+    email: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      unique: true,
+      validate: {
+        isEmail:  { msg: "Debe ingresar un correo electrónico válido." },
+        notEmpty: { msg: "El correo no puede estar vacío." },
+      },
+    },
+    fechaRegistro: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+  },
+  {
+    timestamps: false,     // Deshabilitar createdAt / updatedAt automáticos
+    tableName:  "usuarios", // Nombre exacto de la tabla en PostgreSQL
+  }
+);
+
+export default Usuario;
+```
+
+## DataTypes disponibles
+
+| DataTypes | PostgreSQL equivalente | Ejemplo JavaScript |
+|-----------|----------------------|-------------------|
+| `STRING` | `VARCHAR(255)` | `"texto"` |
+| `TEXT` | `TEXT` | `"texto largo..."` |
+| `INTEGER` | `INT` | `42` |
+| `BIGINT` | `BIGINT` | `"9007199254740992"` |
+| `FLOAT` | `FLOAT` | `3.14` |
+| `DECIMAL(p,s)` | `NUMERIC(p,s)` | `"1234.56"` |
+| `BOOLEAN` | `BOOLEAN` | `true` |
+| `DATE` | `TIMESTAMP WITH TIME ZONE` | `new Date()` |
+| `DATEONLY` | `DATE` | `"2025-01-15"` |
+| `JSON` | `JSON` | `{ clave: "valor" }` |
+| `JSONB` | `JSONB` | `{ clave: "valor" }` |
+| `UUID` | `UUID` | `"550e8400-e29b-..."` |
+| `ARRAY(type)` | `ARRAY` | `[1, 2, 3]` |
+
+## Asociaciones
+
+Las asociaciones definen relaciones entre modelos. Sequelize crea automáticamente las claves foráneas:
+
+```javascript
+// models/Publicacion.js
+import { DataTypes } from "sequelize";
+import db from "../db/connection.js";
+import Usuario from "./Usuario.js";
+
+const Publicacion = db.define(
+  "Publicacion",
+  {
+    titulo: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      validate: { notEmpty: { msg: "El título no puede estar vacío." } },
+    },
+    contenido: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+    },
+    imagen: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: null,
+    },
+    fechaPublicacion: {
+      type: DataTypes.DATE,
+      defaultValue: DataTypes.NOW,
+    },
+  },
+  { timestamps: false, tableName: "publicaciones" }
+);
+
+// 1 Usuario tiene muchas Publicaciones
+Usuario.hasMany(Publicacion, {
+  foreignKey: "usuarioId",   // columna FK en la tabla publicaciones
+  as:         "publicaciones",
+  onDelete:   "CASCADE",     // si se elimina el usuario, se eliminan sus publicaciones
+  onUpdate:   "CASCADE",
+});
+
+// Cada Publicacion pertenece a 1 Usuario
+Publicacion.belongsTo(Usuario, {
+  foreignKey: "usuarioId",
+  as:         "autor",
+});
+
+export default Publicacion;
+```
+
+### Tipos de asociación
+
+| Método | Relación | SQL generado |
+|--------|----------|-------------|
+| `hasOne` | 1:1 | FK en la tabla destino |
+| `belongsTo` | N:1 | FK en la tabla origen |
+| `hasMany` | 1:N | FK en la tabla destino |
+| `belongsToMany` | N:M | Tabla pivote |
+
+## Sincronización del esquema
+
+`db.sync()` crea o modifica las tablas para que coincidan con los modelos:
+
+```javascript
+// En el arranque del servidor
+await db.authenticate();          // Verifica la conexión
+await db.sync({ alter: true });   // Sincroniza el esquema
+
+// db.sync()              → crea la tabla si no existe (no modifica si ya existe)
+// db.sync({ force: true }) → BORRA y recrea la tabla (¡peligroso en producción!)
+// db.sync({ alter: true }) → agrega columnas nuevas sin perder datos
+```
+
+<Callout type="warning">
+`db.sync({ force: true })` elimina y recrea todas las tablas. **Nunca** lo uses en producción. Para producción, usa **migraciones** de Sequelize CLI.
+</Callout>
+
+## CRUD con Sequelize
+
+```javascript
+// Crear
+const usuario = await Usuario.create({ nombre: "Ana García", email: "ana@demo.com" });
+
+// Leer todos
+const usuarios = await Usuario.findAll({ order: [["fechaRegistro", "DESC"]] });
+
+// Leer uno por PK
+const usuario = await Usuario.findByPk(1);
+
+// Leer con condición
+const usuario = await Usuario.findOne({ where: { email: "ana@demo.com" } });
+
+// Leer con asociación (JOIN)
+const publicaciones = await Publicacion.findAll({
+  include: [{ model: Usuario, as: "autor", attributes: ["nombre", "email"] }],
+});
+
+// Actualizar
+await Usuario.update({ nombre: "Ana M. García" }, { where: { id: 1 } });
+
+// Eliminar
+await Usuario.destroy({ where: { id: 1 } });
+```
+
+## Integración en la clase Server
+
+```javascript
+// models/Server.js
+import express from "express";
+import db from "../db/connection.js";
+import publicacionRouter from "../routes/apiRootPostPublicacion.routes.js";
+import usuarioRouter     from "../routes/apiRootPostUsuario.routes.js";
+
+class Server {
+  constructor() {
+    this.app  = express();
+    this.port = process.env.PORT || 8000;
+
+    this.dbConnection(); // 1. Conectar BD
+    this.middlewares();  // 2. Configurar middlewares
+    this.routes();       // 3. Registrar rutas
+  }
+
+  async dbConnection() {
+    try {
+      await db.authenticate();
+      await db.sync({ alter: true });
+      console.log("[BD] Conexión y sincronización OK");
+    } catch (error) {
+      console.error("[BD] Error:", error.message);
+      throw error;
+    }
+  }
+
+  middlewares() {
+    this.app.use(express.json());
+  }
+
+  routes() {
+    this.app.use("/api/publicacion", publicacionRouter);
+    this.app.use("/api/usuario",     usuarioRouter);
+  }
+
+  listen() {
+    this.app.listen(this.port, () => {
+      console.log(`[SERVER] Corriendo en http://localhost:${this.port}`);
+    });
+  }
+}
+
+export default Server;
+```
+
+## SQL generado vs SQL manual
+
+Una comparación real de lo que genera Sequelize vs lo que escribirías a mano:
+
+```sql
+-- Sequelize: Usuario.create({ nombre, email })
+INSERT INTO "usuarios" ("nombre","email","fechaRegistro")
+VALUES ('Ana García','ana@demo.com','2025-05-21 12:00:00+00')
+RETURNING "id","nombre","email","fechaRegistro";
+
+-- Sequelize: Publicacion.findAll({ include: [{ model: Usuario, as: 'autor' }] })
+SELECT "Publicacion"."id", "Publicacion"."titulo", "Publicacion"."contenido",
+       "autor"."id" AS "autor.id", "autor"."nombre" AS "autor.nombre"
+FROM "publicaciones" AS "Publicacion"
+LEFT OUTER JOIN "usuarios" AS "autor"
+  ON "Publicacion"."usuarioId" = "autor"."id";
+```
+
+<Callout type="tip">
+Con `logging: console.log` activado en desarrollo puedes ver exactamente qué SQL genera Sequelize. Es una excelente forma de aprender la equivalencia entre métodos ORM y SQL.
+</Callout>
+
+## Cuándo usar pg directo vs Sequelize
+
+| Criterio | `pg` directo | Sequelize ORM |
+|----------|-------------|--------------|
+| Control total del SQL | ✅ Máximo | Parcial |
+| Velocidad de desarrollo | Media | ✅ Alta |
+| Consultas complejas | ✅ Directo | Posible pero verbose |
+| Migraciones | Manual | ✅ CLI integrado |
+| Validaciones | Manual | ✅ Declarativas |
+| Asociaciones / JOINs | SQL manual | ✅ API fluida |
+| Rendimiento | ✅ Óptimo | Ligero overhead |

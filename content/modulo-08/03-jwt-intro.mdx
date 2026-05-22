@@ -1,0 +1,212 @@
+---
+titulo: "Introducción a JWT"
+tipo: teoria
+duracion: 6h
+objetivos:
+  - Entender la estructura de un JSON Web Token (header.payload.signature)
+  - Firmar tokens con jwt.sign() y verificarlos con jwt.verify()
+  - Implementar login con generación de token y rutas protegidas
+  - Manejar expiración de tokens y el esquema Authorization Bearer
+recursos:
+  - { nombre: "jwt.io — debugger interactivo", url: "https://jwt.io/" }
+  - { nombre: "jsonwebtoken en npm", url: "https://www.npmjs.com/package/jsonwebtoken" }
+  - { nombre: "RFC 7519 — JWT estándar", url: "https://datatracker.ietf.org/doc/html/rfc7519" }
+---
+
+# Introducción a JWT
+
+Un **JSON Web Token** (JWT) es una cadena compacta que permite transmitir información verificable entre dos partes. Se usa principalmente para **autenticación stateless**: el servidor no necesita guardar sesiones porque toda la información del usuario va dentro del propio token.
+
+## Estructura de un JWT
+
+Un token tiene tres partes separadas por `.`:
+
+```
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9   ← Header (base64url)
+.eyJzdWIiOiJ1c3ItMSIsInJvbGUiOiJ1c2VyIn0   ← Payload (base64url)
+.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c   ← Signature
+```
+
+| Parte | Contenido |
+|-------|-----------|
+| **Header** | Algoritmo (`HS256`) y tipo (`JWT`) |
+| **Payload** | Claims: datos del usuario + metadatos (`iat`, `exp`, `sub`) |
+| **Signature** | HMAC del header + payload firmado con la clave secreta |
+
+<Callout type="warning">
+El payload de un JWT está en **base64url**, no cifrado. Cualquiera puede decodificarlo y leer su contenido. **Nunca incluyas contraseñas, datos bancarios ni información sensible** en el payload. Lo que garantiza el JWT es la **integridad** (nadie puede modificarlo sin invalidar la firma), no la confidencialidad.
+</Callout>
+
+## Claims estándar
+
+| Claim | Nombre | Descripción |
+|-------|--------|-------------|
+| `sub` | Subject | ID del usuario dueño del token |
+| `iat` | Issued At | Timestamp de emisión (segundos) |
+| `exp` | Expiration | Timestamp de expiración (segundos) |
+| `jti` | JWT ID | Identificador único del token |
+
+## Instalación
+
+```bash
+npm install jsonwebtoken dotenv
+```
+
+## Firmar un token — `jwt.sign()`
+
+```javascript
+import jwt from 'jsonwebtoken';
+
+const SECRET = 'mi_clave_ultra_secreta'; // en producción: variable de entorno
+
+// Firma básica (sin expiración)
+const token = jwt.sign({ email: 'mark@gmail.com', role: 'user' }, SECRET);
+
+// Firma con expiración (recomendado)
+const tokenConExpiracion = jwt.sign(
+  { sub: 'usr-1', email: 'mark@gmail.com', role: 'user' },
+  SECRET,
+  { expiresIn: '2h' } // '15m', '7d', '1y', 3600 (segundos)
+);
+```
+
+## Verificar un token — `jwt.verify()`
+
+```javascript
+try {
+  const decoded = jwt.verify(tokenConExpiracion, SECRET);
+  console.log(decoded); // { sub: 'usr-1', email: '...', role: '...', iat: ..., exp: ... }
+} catch (error) {
+  if (error.name === 'TokenExpiredError') {
+    console.log('Token expirado');
+  } else if (error.name === 'JsonWebTokenError') {
+    console.log('Token inválido o corrupto');
+  }
+}
+```
+
+<Callout type="tip">
+`jwt.verify()` lanza excepciones en lugar de retornar `null`. Siempre envuélvelo en `try/catch`. Los dos errores más comunes son `TokenExpiredError` y `JsonWebTokenError`.
+</Callout>
+
+## Implementación básica paso a paso
+
+### Paso 1 — Servidor base
+
+```javascript
+// index.js
+import express from 'express';
+import jwt     from 'jsonwebtoken';
+
+const app = express();
+app.use(express.json());
+
+const SECRET = process.env.JWT_SECRET || 'dev_secret';
+const USERS  = [
+  { id: 1, email: 'admin@demo.dev', password: 'Admin123*', role: 'admin' },
+  { id: 2, email: 'user@demo.dev',  password: 'User123*',  role: 'user'  }
+];
+
+app.listen(3000, () => console.log('Servidor en http://localhost:3000'));
+```
+
+### Paso 2 — Endpoint de login (genera el token)
+
+```javascript
+// POST /auth/login
+app.post('/auth/login', (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ mensaje: 'Email y password requeridos' });
+  }
+
+  const user = USERS.find(u => u.email.toLowerCase() === email.toLowerCase());
+  if (!user || user.password !== password) {
+    return res.status(401).json({ mensaje: 'Credenciales inválidas' });
+  }
+
+  const token = jwt.sign(
+    { sub: user.id, email: user.email, role: user.role },
+    SECRET,
+    { expiresIn: '2h' }
+  );
+
+  res.json({ token, tipo: 'Bearer', expiresIn: '2h' });
+});
+```
+
+### Paso 3 — Middleware de autenticación
+
+```javascript
+// middlewares/auth.js
+const verificarJWT = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    return res.status(401).json({
+      mensaje: 'Token no proporcionado',
+      instruccion: 'Envía: Authorization: Bearer <token>'
+    });
+  }
+
+  if (!authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ mensaje: 'Formato inválido. Usa: Bearer <token>' });
+  }
+
+  const token = authHeader.slice(7); // elimina "Bearer "
+
+  try {
+    const decoded = jwt.verify(token, SECRET);
+    req.user = decoded; // disponible en el siguiente handler
+    return next();
+  } catch (error) {
+    const mensaje = error.name === 'TokenExpiredError'
+      ? 'Token expirado. Inicia sesión de nuevo.'
+      : 'Token inválido o corrupto';
+    return res.status(401).json({ mensaje, tipo_error: error.name });
+  }
+};
+```
+
+### Paso 4 — Ruta protegida
+
+```javascript
+// GET /perfil — solo con token válido
+app.get('/perfil', verificarJWT, (req, res) => {
+  res.json({
+    mensaje: 'Acceso autorizado',
+    usuario: req.user
+  });
+});
+```
+
+## Flujo completo
+
+```
+1. Cliente → POST /auth/login  { email, password }
+2. Servidor valida credenciales y firma el JWT
+3. Servidor → { token: "eyJ..." }
+4. Cliente guarda el token (localStorage / cookie httpOnly)
+
+5. Cliente → GET /perfil
+   Authorization: Bearer eyJ...
+6. Middleware verificarJWT llama jwt.verify()
+7. Si es válido → req.user disponible → handler responde
+8. Si expiró   → 401 TokenExpiredError
+9. Si corrupto → 401 JsonWebTokenError
+```
+
+## Esquema Authorization Bearer
+
+El estándar HTTP para enviar el token es la cabecera `Authorization`:
+
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+En herramientas como Postman: `Headers → Authorization → Bearer Token`.
+
+<Callout type="warning">
+**No guardes JWTs en `localStorage` si tu aplicación puede ser vulnerable a XSS.** La alternativa segura es una cookie `httpOnly; Secure; SameSite=Strict` que el navegador envía automáticamente y JavaScript no puede leer.
+</Callout>

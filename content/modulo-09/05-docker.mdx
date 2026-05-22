@@ -1,0 +1,318 @@
+---
+titulo: "Docker y Contenedorización"
+tipo: practica
+duracion: 8h
+objetivos:
+  - Escribir un Dockerfile multi-stage optimizado para Next.js
+  - Configurar Docker Compose para orquestar frontend, API y base de datos
+  - Aplicar buenas prácticas de seguridad (usuario no-root, .dockerignore)
+  - Entender los conceptos fundamentales de contenedorización y Kubernetes
+recursos:
+  - { nombre: "Docker Docs", url: "https://docs.docker.com/" }
+  - { nombre: "Docker best practices Node.js", url: "https://github.com/nodejs/docker-node/blob/main/docs/BestPractices.md" }
+  - { nombre: "Next.js Standalone Output", url: "https://nextjs.org/docs/app/api-reference/next-config-js/output" }
+  - { nombre: "Docker Compose Docs", url: "https://docs.docker.com/compose/" }
+---
+
+# Docker y Contenedorización
+
+Docker resuelve el problema clásico de "funciona en mi máquina": empaqueta la aplicación con todas sus dependencias en una **imagen** que corre de forma idéntica en desarrollo, CI y producción.
+
+## Conceptos fundamentales
+
+| Concepto | Descripción |
+|---|---|
+| **Imagen** | Plantilla inmutable que define el sistema de archivos y el proceso que se ejecuta |
+| **Contenedor** | Instancia en ejecución de una imagen (como un proceso aislado) |
+| **Dockerfile** | Script de instrucciones para construir una imagen |
+| **Registry** | Repositorio de imágenes (Docker Hub, GitHub Container Registry, GCP Artifact Registry) |
+| **Docker Compose** | Herramienta para definir y levantar múltiples contenedores con un solo archivo YAML |
+| **Volume** | Mecanismo para persistir datos más allá del ciclo de vida de un contenedor |
+| **Network** | Red virtual que permite la comunicación entre contenedores |
+
+## Dockerfile multi-stage para Next.js
+
+La estrategia multi-stage usa varias etapas de build para que la imagen final solo contenga lo necesario (sin herramientas de build, sin código fuente).
+
+```dockerfile
+# Dockerfile (raíz del proyecto Next.js)
+
+# ──── Etapa 1: Dependencias de producción ────────────────────────────
+FROM node:20-alpine AS deps
+WORKDIR /app
+
+# Copiar solo manifiestos de paquetes (aprovecha caché de Docker)
+COPY package.json package-lock.json ./
+RUN npm ci --only=production
+
+# ──── Etapa 2: Builder ───────────────────────────────────────────────
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+
+# Variables necesarias en tiempo de build
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
+RUN npm run build
+
+# ──── Etapa 3: Runner (imagen final) ─────────────────────────────────
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Seguridad: crear usuario sin privilegios
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Copiar solo los artefactos necesarios del builder
+COPY --from=builder /app/public ./public
+
+# Next.js standalone: incluye solo los módulos que usa la app
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Cambiar al usuario no-root antes de iniciar
+USER nextjs
+
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+CMD ["node", "server.js"]
+```
+
+Para que el modo `standalone` funcione, añade al `next.config.ts`:
+
+```ts
+// next.config.ts
+const nextConfig = {
+  output: 'standalone', // ← genera una carpeta .next/standalone
+};
+
+export default nextConfig;
+```
+
+<Callout type="tip">
+El modo `standalone` reduce el tamaño de la imagen drásticamente: copia solo los módulos de Node.js que realmente importa tu app. Una app Next.js típica pasa de ~1 GB a ~150 MB.
+</Callout>
+
+## Dockerfile para la API Express
+
+```dockerfile
+# api/Dockerfile
+
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --only=production
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Usuario no-root
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 apiuser
+
+# Copiar dependencias y código fuente
+COPY --from=deps /app/node_modules ./node_modules
+COPY --chown=apiuser:nodejs . .
+
+USER apiuser
+
+EXPOSE 4000
+CMD ["node", "src/index.js"]
+```
+
+## .dockerignore
+
+```dockerignore
+# .dockerignore — evita copiar archivos innecesarios al contexto de build
+node_modules
+.next
+.env
+.env.local
+.env.*.local
+*.log
+npm-debug.log*
+.git
+.gitignore
+README.md
+Dockerfile
+docker-compose*.yml
+coverage
+.nyc_output
+```
+
+<Callout type="warning">
+Sin `.dockerignore`, el comando `COPY . .` envía `node_modules` al contexto de build — esto puede sumar cientos de megabytes y ralentizar el proceso considerablemente.
+</Callout>
+
+## Docker Compose — orquestación del proyecto completo
+
+```yaml
+# docker-compose.yml
+services:
+  # ── Base de datos ─────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: factordash-db
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - factordash-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── API Express ───────────────────────────────────
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: factordash-api
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - factordash-net
+    ports:
+      - "4000:4000"
+
+  # ── Frontend Next.js ──────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://api:4000
+    container_name: factordash-frontend
+    environment:
+      NODE_ENV: production
+    depends_on:
+      - api
+    networks:
+      - factordash-net
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
+
+networks:
+  factordash-net:
+    driver: bridge
+```
+
+```env
+# .env (en la raíz del proyecto — NO commitear)
+DB_USER=factordash
+DB_PASSWORD=supersecret
+DB_NAME=factordash_db
+JWT_SECRET=mi-jwt-secret-largo-y-aleatorio
+JWT_REFRESH_SECRET=mi-refresh-secret-largo
+```
+
+## Comandos esenciales
+
+```bash
+# Construir e iniciar todos los servicios
+docker compose up --build
+
+# Iniciar en background
+docker compose up -d --build
+
+# Ver logs de un servicio específico
+docker compose logs -f api
+
+# Detener y eliminar contenedores (los volúmenes se conservan)
+docker compose down
+
+# Detener y eliminar contenedores + volúmenes (borra la BD)
+docker compose down -v
+
+# Ejecutar un comando dentro de un contenedor en ejecución
+docker compose exec api sh
+
+# Ver imágenes construidas
+docker images
+
+# Ver contenedores en ejecución
+docker ps
+
+# Limpiar imágenes, contenedores y redes sin uso
+docker system prune -a
+```
+
+## Introducción a Kubernetes
+
+Kubernetes (K8s) es el orquestador de contenedores estándar de la industria. Cuando Docker Compose gestiona contenedores en **una máquina**, K8s los gestiona en **un clúster de máquinas**.
+
+| Concepto K8s | Equivalente Docker Compose |
+|---|---|
+| **Pod** | Contenedor (puede agrupar varios) |
+| **Deployment** | `build` + política de réplicas |
+| **Service** | `ports` + load balancer interno |
+| **Ingress** | Reverse proxy (Nginx/Traefik) |
+| **ConfigMap** | Variables de entorno no sensibles |
+| **Secret** | Variables de entorno sensibles |
+| **Namespace** | Separación lógica (dev/staging/prod) |
+
+```yaml
+# Ejemplo conceptual: Deployment de la API en K8s
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: factordash-api
+spec:
+  replicas: 3         # 3 instancias del contenedor
+  selector:
+    matchLabels:
+      app: factordash-api
+  template:
+    metadata:
+      labels:
+        app: factordash-api
+    spec:
+      containers:
+        - name: api
+          image: gcr.io/mi-proyecto/factordash-api:latest
+          ports:
+            - containerPort: 4000
+          env:
+            - name: NODE_ENV
+              value: "production"
+          resources:
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+```
+
+<Callout type="tip">
+Para el proyecto del módulo usaremos **GCP Cloud Run** (serverless) que abstrae K8s. Kubernetes se incluye aquí como contexto conceptual para entrevistas y proyectos de mayor escala.
+</Callout>
+
+## Ejercicios propuestos
+
+1. Construye la imagen del frontend con `docker build -t factordash-frontend .` y verifica que el servidor arranca con `docker run -p 3000:3000 factordash-frontend`.
+2. Levanta el stack completo (frontend + api + db) con `docker compose up --build` y verifica que el login funciona end-to-end.
+3. Inspecciona el tamaño de la imagen antes y después de usar el modo `standalone` de Next.js con `docker images`.

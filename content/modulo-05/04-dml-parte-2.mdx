@@ -1,0 +1,338 @@
+---
+titulo: "Manipulación de Datos DML (Parte II)"
+descripcion: "JOINs avanzados, subconsultas, GROUP BY con HAVING, DISTINCT y ordenamiento multi-columna."
+tipo: "practica"
+modulo: 5
+duracion: "6h"
+objetivos:
+  - "Combinar tablas con INNER JOIN, LEFT JOIN y RIGHT JOIN."
+  - "Agrupar y resumir datos con GROUP BY y funciones de agregación."
+  - "Filtrar grupos con HAVING."
+  - "Escribir subconsultas (subqueries) correlacionadas e independientes."
+  - "Eliminar duplicados con DISTINCT."
+conceptosClave:
+  - "INNER JOIN"
+  - "LEFT JOIN"
+  - "RIGHT JOIN"
+  - "GROUP BY"
+  - "HAVING"
+  - "Subquery"
+  - "DISTINCT"
+  - "ORDER BY multi-columna"
+recursos:
+  - { nombre: "Visual JOIN Guide", url: "https://www.codeproject.com/Articles/33052/Visual-Representation-of-SQL-Joins" }
+  - { nombre: "MySQL Docs — JOIN", url: "https://dev.mysql.com/doc/refman/8.0/en/join.html" }
+---
+
+# Manipulación de Datos DML (Parte II)
+
+En esta segunda parte profundizamos en las herramientas más poderosas de SQL para **consultar y combinar información de múltiples tablas**: JOINs, GROUP BY, subconsultas y más.
+
+---
+
+## Repaso del esquema Alke Wallet
+
+```sql
+USE alke_wallet;
+
+-- usuarios (user_id PK, nombre, correo, saldo, created_at)
+-- monedas  (currency_id PK, currency_name, currency_symbol)
+-- transacciones (transaction_id PK,
+--                sender_user_id FK→usuarios,
+--                receiver_user_id FK→usuarios,
+--                valor, transaction_date)
+```
+
+---
+
+## JOIN — Combinar tablas
+
+Un **JOIN** combina filas de dos o más tablas basándose en una condición (generalmente FK = PK).
+
+### INNER JOIN — solo coincidencias
+
+```sql
+-- Transacciones con el nombre del remitente
+SELECT
+  t.transaction_id,
+  u.nombre         AS remitente,
+  t.valor,
+  t.transaction_date
+FROM transacciones t
+  INNER JOIN usuarios u ON u.user_id = t.sender_user_id
+ORDER BY t.transaction_date;
+```
+
+Solo aparecen transacciones cuyo `sender_user_id` existe en `usuarios`. Si hay un ID huérfano, no aparece.
+
+### LEFT JOIN — todos de la izquierda
+
+```sql
+-- Todos los usuarios, incluyendo los que nunca enviaron dinero
+SELECT
+  u.nombre,
+  COUNT(t.transaction_id) AS transacciones_enviadas,
+  COALESCE(SUM(t.valor), 0) AS total_enviado
+FROM usuarios u
+  LEFT JOIN transacciones t ON t.sender_user_id = u.user_id
+GROUP BY u.user_id, u.nombre
+ORDER BY total_enviado DESC;
+```
+
+`COALESCE(valor, 0)` convierte NULL en 0 cuando un usuario no tiene transacciones.
+
+### RIGHT JOIN — todos de la derecha
+
+```sql
+-- Todos los receptores, incluyendo los que nunca recibieron
+SELECT
+  u.nombre,
+  COUNT(t.transaction_id)   AS transacciones_recibidas,
+  COALESCE(SUM(t.valor), 0) AS total_recibido
+FROM transacciones t
+  RIGHT JOIN usuarios u ON u.user_id = t.receiver_user_id
+GROUP BY u.user_id, u.nombre
+ORDER BY total_recibido DESC;
+```
+
+<Callout type="info">
+**Equivalencia:** `tabla_A LEFT JOIN tabla_B` es lo mismo que `tabla_B RIGHT JOIN tabla_A`. En la práctica, la mayoría de los desarrolladores usa solo LEFT JOIN invirtiendo el orden de las tablas cuando es necesario.
+</Callout>
+
+### JOIN múltiple — remitente y receptor
+
+```sql
+-- Mostrar ambos nombres en cada transacción
+SELECT
+  e.nombre             AS remitente,
+  r.nombre             AS receptor,
+  t.valor,
+  t.transaction_date
+FROM transacciones t
+  JOIN usuarios e ON e.user_id = t.sender_user_id
+  JOIN usuarios r ON r.user_id = t.receiver_user_id
+ORDER BY t.transaction_date;
+```
+
+Unimos la misma tabla `usuarios` dos veces con alias distintos (`e` = emisor, `r` = receptor).
+
+---
+
+## GROUP BY — Agrupar resultados
+
+```sql
+-- Resumen por remitente
+SELECT
+  sender_user_id                   AS id_remitente,
+  COUNT(*)                         AS numero_transferencias,
+  SUM(valor)                       AS monto_total,
+  AVG(valor)                       AS monto_promedio,
+  MAX(valor)                       AS mayor_transferencia,
+  MIN(valor)                       AS menor_transferencia
+FROM transacciones
+GROUP BY sender_user_id;
+```
+
+Combinar con JOIN para tener el nombre:
+
+```sql
+SELECT
+  u.nombre,
+  COUNT(t.transaction_id)  AS transacciones,
+  SUM(t.valor)             AS total_enviado
+FROM usuarios u
+  LEFT JOIN transacciones t ON t.sender_user_id = u.user_id
+GROUP BY u.user_id, u.nombre
+ORDER BY total_enviado DESC;
+```
+
+<Callout type="warning">
+En el SELECT solo puedes incluir: las columnas del `GROUP BY` o funciones de agregación. Incluir otra columna (ej: `correo`) genera un error en modo estricto.
+</Callout>
+
+---
+
+## HAVING — Filtrar grupos
+
+`WHERE` filtra filas **antes** de agrupar. `HAVING` filtra grupos **después** de agrupar.
+
+```sql
+-- Solo usuarios con más de 2 transacciones enviadas
+SELECT
+  u.nombre,
+  COUNT(t.transaction_id) AS transacciones
+FROM usuarios u
+  JOIN transacciones t ON t.sender_user_id = u.user_id
+GROUP BY u.user_id, u.nombre
+HAVING COUNT(t.transaction_id) > 2;
+
+-- Solo usuarios cuyo total enviado supera 50000
+SELECT
+  u.nombre,
+  SUM(t.valor) AS total
+FROM usuarios u
+  JOIN transacciones t ON t.sender_user_id = u.user_id
+GROUP BY u.user_id, u.nombre
+HAVING SUM(t.valor) > 50000
+ORDER BY total DESC;
+```
+
+### WHERE + HAVING juntos
+
+```sql
+-- De las transacciones del 2024,
+-- mostrar solo remitentes con total > 20000
+SELECT
+  u.nombre,
+  SUM(t.valor) AS total_2024
+FROM transacciones t
+  JOIN usuarios u ON u.user_id = t.sender_user_id
+WHERE YEAR(t.transaction_date) = 2024          -- WHERE filtra filas primero
+GROUP BY u.user_id, u.nombre
+HAVING SUM(t.valor) > 20000                    -- HAVING filtra grupos después
+ORDER BY total_2024 DESC;
+```
+
+---
+
+## DISTINCT — Eliminar duplicados
+
+```sql
+-- Listar los IDs de usuarios que alguna vez enviaron dinero (sin repetir)
+SELECT DISTINCT sender_user_id FROM transacciones;
+
+-- Con JOIN: nombres únicos de remitentes
+SELECT DISTINCT u.nombre
+FROM transacciones t
+  JOIN usuarios u ON u.user_id = t.sender_user_id;
+```
+
+---
+
+## ORDER BY multi-columna
+
+```sql
+-- Primero por saldo descendente, luego por nombre ascendente
+SELECT nombre, saldo, created_at
+FROM usuarios
+ORDER BY saldo DESC, nombre ASC;
+
+-- Ordenar transacciones por fecha y luego por valor
+SELECT * FROM transacciones
+ORDER BY transaction_date DESC, valor DESC;
+```
+
+---
+
+## Subconsultas (Subqueries)
+
+Una **subconsulta** es un SELECT dentro de otro SELECT.
+
+### Subquery en WHERE
+
+```sql
+-- Usuarios con saldo mayor al promedio
+SELECT nombre, saldo
+FROM usuarios
+WHERE saldo > (SELECT AVG(saldo) FROM usuarios);
+
+-- El usuario que recibió la mayor transferencia individual
+SELECT nombre
+FROM usuarios
+WHERE user_id = (
+  SELECT receiver_user_id
+  FROM transacciones
+  ORDER BY valor DESC
+  LIMIT 1
+);
+```
+
+### Subquery en FROM (tabla derivada)
+
+```sql
+-- Calcular el ranking de enviadores usando una subquery como tabla
+SELECT
+  resumen.nombre,
+  resumen.total,
+  RANK() OVER (ORDER BY resumen.total DESC) AS ranking
+FROM (
+  SELECT
+    u.nombre,
+    SUM(t.valor) AS total
+  FROM transacciones t
+    JOIN usuarios u ON u.user_id = t.sender_user_id
+  GROUP BY u.user_id, u.nombre
+) AS resumen;
+```
+
+### Subquery correlacionada
+
+Una subquery correlacionada hace referencia a la consulta externa (se ejecuta una vez por fila):
+
+```sql
+-- Para cada usuario, mostrar cuánto dinero ha enviado en total
+SELECT
+  u.nombre,
+  u.saldo,
+  (
+    SELECT COALESCE(SUM(t.valor), 0)
+    FROM transacciones t
+    WHERE t.sender_user_id = u.user_id
+  ) AS total_enviado
+FROM usuarios u
+ORDER BY total_enviado DESC;
+```
+
+<Callout type="tip">
+Las subqueries correlacionadas son fáciles de leer pero pueden ser lentas en tablas grandes. Cuando el rendimiento importa, sustitúyelas por un `LEFT JOIN + GROUP BY`.
+</Callout>
+
+---
+
+## Consultas de reporte completas
+
+### Resumen de actividad por usuario
+
+```sql
+SELECT
+  u.user_id,
+  u.nombre,
+  u.saldo                                      AS saldo_actual,
+  COALESCE(env.total_enviado,    0)            AS total_enviado,
+  COALESCE(rec.total_recibido,   0)            AS total_recibido,
+  COALESCE(env.num_envios,       0)            AS num_envios,
+  COALESCE(rec.num_recepciones,  0)            AS num_recepciones
+FROM usuarios u
+  LEFT JOIN (
+    SELECT sender_user_id   AS uid,
+           SUM(valor)       AS total_enviado,
+           COUNT(*)         AS num_envios
+    FROM transacciones
+    GROUP BY sender_user_id
+  ) env ON env.uid = u.user_id
+  LEFT JOIN (
+    SELECT receiver_user_id AS uid,
+           SUM(valor)       AS total_recibido,
+           COUNT(*)         AS num_recepciones
+    FROM transacciones
+    GROUP BY receiver_user_id
+  ) rec ON rec.uid = u.user_id
+ORDER BY total_enviado DESC;
+```
+
+---
+
+## Resumen visual: jerarquía de ejecución SQL
+
+```
+Orden lógico de ejecución de una consulta SELECT:
+
+  1. FROM   + JOIN   → determina las tablas y las combina
+  2. WHERE           → filtra filas individuales
+  3. GROUP BY        → agrupa las filas restantes
+  4. HAVING          → filtra grupos
+  5. SELECT          → selecciona columnas / aplica funciones
+  6. DISTINCT        → elimina duplicados
+  7. ORDER BY        → ordena el resultado
+  8. LIMIT / OFFSET  → pagina el resultado
+```

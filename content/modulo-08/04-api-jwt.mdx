@@ -1,0 +1,378 @@
+---
+titulo: "API con Autenticación JWT"
+tipo: proyecto
+duracion: 12h
+objetivos:
+  - Implementar el par access token + refresh token con secretos distintos
+  - Crear el middleware authenticateJWT y el factory authorizeRoles para proteger rutas por rol
+  - Gestionar logout con blacklist en memoria y refresco seguro de tokens
+  - Integrar autenticación JWT en la API de guitarras del tema anterior
+recursos:
+  - { nombre: "jsonwebtoken en npm", url: "https://www.npmjs.com/package/jsonwebtoken" }
+  - { nombre: "Node.js crypto.timingSafeEqual", url: "https://nodejs.org/api/crypto.html#cryptotimingsafeequalbuf1-buf2" }
+  - { nombre: "OWASP — JWT Security Cheat Sheet", url: "https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_for_Java_Cheat_Sheet.html" }
+---
+
+# API con Autenticación JWT
+
+En este tema añades **autenticación y autorización** a la API de guitarras del tema anterior. El sistema utiliza dos tokens con claves distintas — **access token** (corta vida) y **refresh token** (larga vida) — y protege las rutas por rol.
+
+## ¿Por qué dos tokens?
+
+| | Access Token | Refresh Token |
+|-|---|---|
+| **Duración** | Corta (15 min) | Larga (7 días) |
+| **Secreto** | `JWT_ACCESS_SECRET` | `JWT_REFRESH_SECRET` |
+| **Uso** | Cada petición a la API | Solo para renovar el access |
+| **Si se filtra** | Expira pronto | Se puede revocar individualmente |
+
+El access token viaja en la cabecera `Authorization: Bearer`. El refresh token se guarda en un `Map` en memoria del servidor y se usa solo en `GET /auth/refresh`.
+
+## Variables de entorno
+
+```bash
+# .env
+PORT=3000
+NODE_ENV=development
+
+JWT_ACCESS_SECRET=cambia_esta_clave_access_muy_larga_y_aleatoria
+JWT_REFRESH_SECRET=cambia_esta_clave_refresh_distinta_a_la_access
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+
+DEMO_ADMIN_EMAIL=admin@guitarras.dev
+DEMO_ADMIN_PASSWORD=Admin123*
+DEMO_USER_EMAIL=user@guitarras.dev
+DEMO_USER_PASSWORD=User123*
+```
+
+<Callout type="warning">
+**`JWT_ACCESS_SECRET` y `JWT_REFRESH_SECRET` deben ser cadenas largas, aleatorias y distintas entre sí.** Si usas la misma clave para ambos, un atacante con un refresh token podría forjar access tokens. Genera con: `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"`.
+</Callout>
+
+## Instalación
+
+```bash
+npm install jsonwebtoken dotenv
+```
+
+## Servicio de autenticación
+
+```javascript
+// services/auth.service.js
+import jwt           from 'jsonwebtoken';
+import { randomUUID, timingSafeEqual } from 'crypto';
+import ApiError      from '../utils/ApiError.js';
+
+const ACCESS_EXPIRES_IN  = process.env.JWT_ACCESS_EXPIRES_IN  || '15m';
+const REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+
+// Validación al arrancar: si faltan los secretos, el proceso falla de inmediato
+if (!process.env.JWT_ACCESS_SECRET || !process.env.JWT_REFRESH_SECRET) {
+  throw new Error('JWT_ACCESS_SECRET y JWT_REFRESH_SECRET deben estar en .env');
+}
+
+const ACCESS_SECRET  = process.env.JWT_ACCESS_SECRET;
+const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
+
+// ── Usuarios de demostración ──────────────────────────────────────────────────
+const DEMO_USERS = [
+  { id: 'u-admin-1', email: process.env.DEMO_ADMIN_EMAIL || 'admin@guitarras.dev',
+    password: process.env.DEMO_ADMIN_PASSWORD || 'Admin123*', role: 'admin' },
+  { id: 'u-user-1',  email: process.env.DEMO_USER_EMAIL  || 'user@guitarras.dev',
+    password: process.env.DEMO_USER_PASSWORD  || 'User123*',  role: 'user'  }
+];
+
+// ── Almacenamiento en memoria ─────────────────────────────────────────────────
+// refreshJti → { userId, role, issuedAt }
+const activeRefreshTokens    = new Map();
+// accessJti  → expiresAt (ms) — tokens revocados antes de su expiración natural
+const blacklistedAccessTokens = new Map();
+
+// .unref() evita que el intervalo impida que Node.js cierre el proceso
+setInterval(() => {
+  const now = Date.now();
+  for (const [jti, expiresAt] of blacklistedAccessTokens) {
+    if (now > expiresAt) blacklistedAccessTokens.delete(jti);
+  }
+}, 15 * 60 * 1000).unref();
+
+// ── Funciones privadas de firma ───────────────────────────────────────────────
+const signAccessToken = (user, jti) =>
+  jwt.sign(
+    { sub: user.id, email: user.email, role: user.role, typ: 'access', jti },
+    ACCESS_SECRET,
+    { expiresIn: ACCESS_EXPIRES_IN }
+  );
+
+const signRefreshToken = (user, jti) =>
+  jwt.sign(
+    { sub: user.id, typ: 'refresh', jti },
+    REFRESH_SECRET,
+    { expiresIn: REFRESH_EXPIRES_IN }
+  );
+
+// Access y refresh reciben JTIs distintos para poder revocarlos individualmente
+const buildAuthResponse = (user) => {
+  const refreshTokenJti = randomUUID(); // JTI exclusivo del refresh token
+  const accessTokenJti  = randomUUID(); // JTI exclusivo del access token
+
+  const accessToken  = signAccessToken(user,  accessTokenJti);
+  const refreshToken = signRefreshToken(user, refreshTokenJti);
+
+  activeRefreshTokens.set(refreshTokenJti, {
+    userId  : user.id,
+    role    : user.role,
+    issuedAt: Date.now()
+  });
+
+  return {
+    tokenType : 'Bearer',
+    accessToken,
+    refreshToken,
+    expiresIn : ACCESS_EXPIRES_IN,
+    user: { id: user.id, email: user.email, role: user.role }
+  };
+};
+
+// ── Servicios exportados ──────────────────────────────────────────────────────
+
+// LOGIN: toma { email, password } del req.body
+export const loginService = ({ email, password }) => {
+  if (!email || !password) {
+    throw new ApiError(400, 'Email y password son obligatorios.');
+  }
+
+  const user = DEMO_USERS.find(u => u.email.toLowerCase() === String(email).toLowerCase());
+
+  // Comparamos en tiempo constante aunque el usuario no exista (anti timing-attack).
+  // Si user no existe creamos un buffer dummy del mismo tamaño para no revelar
+  // su existencia a través de una diferencia en el tiempo de respuesta.
+  const inputBuf  = Buffer.from(String(password));
+  const storedBuf = user
+    ? Buffer.from(String(user.password))
+    : Buffer.alloc(inputBuf.length);
+
+  const passwordMatch = inputBuf.length === storedBuf.length
+    && timingSafeEqual(inputBuf, storedBuf);
+
+  if (!user || !passwordMatch) {
+    throw new ApiError(401, 'Credenciales inválidas.');
+  }
+  return buildAuthResponse(user);
+};
+
+// REFRESH: toma { refreshToken } del req.body y rota el par de tokens
+export const refreshTokenService = ({ refreshToken }) => {
+  if (!refreshToken) throw new ApiError(400, 'refreshToken es obligatorio.');
+
+  let payload;
+  try {
+    payload = jwt.verify(refreshToken, REFRESH_SECRET);
+  } catch {
+    throw new ApiError(401, 'Refresh token inválido o expirado.');
+  }
+
+  if (payload.typ !== 'refresh' || !payload.jti) {
+    throw new ApiError(401, 'Refresh token inválido.');
+  }
+
+  // Verificar que el token esté en el Map Y que el userId coincida
+  const stored = activeRefreshTokens.get(payload.jti);
+  if (!stored || stored.userId !== payload.sub) {
+    throw new ApiError(401, 'Refresh token revocado.');
+  }
+
+  // Rotación: eliminar el token usado ANTES de emitir el nuevo
+  activeRefreshTokens.delete(payload.jti);
+
+  const user = DEMO_USERS.find(u => u.id === payload.sub);
+  if (!user) throw new ApiError(401, 'Usuario no válido para refrescar sesión.');
+
+  return buildAuthResponse(user);
+};
+
+// LOGOUT: invalida ambos tokens de inmediato — ambos son obligatorios
+export const logoutService = ({ refreshToken, accessToken }) => {
+  if (!refreshToken || !accessToken) {
+    throw new ApiError(400, 'refreshToken y accessToken son obligatorios para cerrar sesión.');
+  }
+
+  // 1) Revocar el refresh token borrándolo del Map
+  try {
+    const rtPayload = jwt.verify(refreshToken, REFRESH_SECRET);
+    if (rtPayload.jti) activeRefreshTokens.delete(rtPayload.jti);
+  } catch {
+    throw new ApiError(401, 'Refresh token inválido o expirado.');
+  }
+
+  // 2) Añadir el access token a la blacklist para invalidarlo inmediatamente
+  try {
+    const atPayload = jwt.verify(accessToken, ACCESS_SECRET);
+    if (atPayload.jti) {
+      // exp viene en segundos → convertir a ms para comparar con Date.now()
+      blacklistedAccessTokens.set(atPayload.jti, atPayload.exp * 1000);
+    }
+  } catch {
+    // Si el access token ya expiró: no importa, logout sigue siendo válido
+  }
+
+  return { message: 'Sesión cerrada correctamente.' };
+};
+
+// VERIFY: valida el access token y comprueba la blacklist
+export const verifyAccessTokenService = (token) => {
+  let decoded;
+  try {
+    decoded = jwt.verify(token, ACCESS_SECRET);
+  } catch (error) {
+    const msg = error.name === 'TokenExpiredError'
+      ? 'Token expirado. Solicita uno nuevo con el refresh token.'
+      : 'Token inválido o corrupto.';
+    throw new ApiError(401, msg);
+  }
+
+  if (decoded.typ !== 'access') throw new ApiError(401, 'Tipo de token incorrecto.');
+  if (blacklistedAccessTokens.has(decoded.jti)) {
+    throw new ApiError(401, 'Token revocado. Inicia sesión de nuevo.');
+  }
+
+  return decoded;
+};
+```
+
+## Middleware authenticateJWT
+
+```javascript
+// middlewares/auth.js
+import ApiError                   from '../utils/ApiError.js';
+import { verifyAccessTokenService } from '../services/auth.service.js';
+
+export const authenticateJWT = (req, res, next) => {
+  const authHeader = req.headers.authorization || '';
+
+  if (!authHeader.startsWith('Bearer ')) {
+    return next(new ApiError(401, 'Token no proporcionado. Usa Authorization: Bearer <token>.'));
+  }
+
+  const token = authHeader.slice(7).trim();
+
+  try {
+    req.user = verifyAccessTokenService(token);
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+};
+
+// Factory: genera un middleware que acepta solo ciertos roles
+export const authorizeRoles = (...allowedRoles) => (req, res, next) => {
+  if (!req.user) return next(new ApiError(401, 'No autenticado'));
+  if (!allowedRoles.includes(req.user.role)) {
+    return next(new ApiError(403, `Rol "${req.user.role}" no tiene permisos para esta operación`));
+  }
+  return next();
+};
+```
+
+## Controlador de autenticación
+
+El controlador es muy delgado: solo extrae los datos del body y delega al servicio. Toda la lógica vive en `auth.service.js`.
+
+```javascript
+// controllers/auth.controller.js
+import { loginService, refreshTokenService, logoutService } from '../services/auth.service.js';
+import { sendSuccess } from '../utils/apiResponse.js';
+
+// POST /api/v1/auth/login — Body: { email, password }
+export const login = (req, res, next) => {
+  try {
+    const data = loginService(req.body); // loginService({ email, password })
+    return sendSuccess({ res, message: 'Autenticación exitosa.', data });
+  } catch (e) { next(e); }
+};
+
+// POST /api/v1/auth/refresh — Body: { refreshToken }
+export const refreshToken = (req, res, next) => {
+  try {
+    const data = refreshTokenService(req.body); // refreshTokenService({ refreshToken })
+    return sendSuccess({ res, message: 'Token renovado correctamente.', data });
+  } catch (e) { next(e); }
+};
+
+// POST /api/v1/auth/logout — Body: { refreshToken, accessToken }
+export const logout = (req, res, next) => {
+  try {
+    const data = logoutService(req.body); // logoutService({ refreshToken, accessToken })
+    return sendSuccess({ res, message: 'Logout exitoso.', data });
+  } catch (e) { next(e); }
+};
+```
+
+<Callout type="tip">
+Notar que el logout recibe `{ refreshToken, accessToken }` en el body, **no** depende de `req.user`. El servicio verifica los dos tokens internamente. Esto hace al controlador completamente stateless.
+</Callout>
+
+## Proteger las rutas
+
+```javascript
+// v1/routes/guitarras.routes.js
+import { authenticateJWT, authorizeRoles } from '../../middlewares/auth.js';
+
+// Lectura: cualquier usuario autenticado
+router.get('/guitarras',              authenticateJWT, getAllGuitars);
+router.get('/guitarras/:guitarId',    authenticateJWT, getOneGuitar);
+
+// Escritura: solo rol admin
+router.post('/guitarras',             authenticateJWT, authorizeRoles('admin'), validateCreateGuitar, createdGuitar);
+router.put('/guitarras/:guitarId',    authenticateJWT, authorizeRoles('admin'), validatePutGuitar,    replaceOneGuitar);
+router.patch('/guitarras/:guitarId',  authenticateJWT, authorizeRoles('admin'), validatePatchGuitar,  patchOneGuitar);
+router.delete('/guitarras/:guitarId', authenticateJWT, authorizeRoles('admin'), deleteOneGuitar);
+
+// Endpoints de autenticación (públicos)
+router.post('/auth/login',   login);
+router.get('/auth/refresh',  refreshToken);
+router.post('/auth/logout',  authenticateJWT, logout); // requiere access token válido
+```
+
+## Flujo de autenticación completo
+
+```
+1. POST /api/v1/auth/login
+   Body: { "email": "admin@guitarras.dev", "password": "Admin123*" }
+   ← 200 { tokenType, accessToken, refreshToken, expiresIn, user: { id, email, role } }
+
+2. GET /api/v1/guitarras
+   Authorization: Bearer <accessToken>
+   ← 200 lista de guitarras
+
+3. (15 min después, access token expirado)
+   GET /api/v1/guitarras
+   ← 401 "Token expirado. Solicita uno nuevo con el refresh token."
+
+4. POST /api/v1/auth/refresh
+   Body: { "refreshToken": "<refreshToken>" }
+   ← 200 { tokenType, accessToken (nuevo), refreshToken (nuevo rotado), ... }
+
+5. POST /api/v1/auth/logout
+   Body: { "refreshToken": "<refreshToken>", "accessToken": "<accessToken>" }
+   ← 200 { message: "Sesión cerrada correctamente." }
+```
+
+<Callout type="warning">
+El logout requiere **ambos tokens** en el body. Sin el `accessToken` el usuario podría seguir accediendo durante los 15 min restantes de su vida. Sin el `refreshToken` podría obtener nuevos access tokens indefinidamente.
+</Callout>
+
+## Errores y códigos HTTP
+
+| Situación | Status | Mensaje |
+|-----------|--------|---------|
+| Sin cabecera Authorization | 401 | Token no proporcionado |
+| Token expirado | 401 | Token expirado |
+| Token inválido / corrupto | 401 | Token inválido o corrupto |
+| Token revocado (logout) | 401 | Token revocado |
+| Rol insuficiente | 403 | No tienes permisos |
+
+<Callout type="tip">
+**Rotación de refresh tokens**: cada vez que llamas a `/auth/refresh`, el servidor invalida el refresh token anterior y emite uno nuevo. Esto limita la ventana de exposición si un refresh token es interceptado.
+</Callout>

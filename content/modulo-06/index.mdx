@@ -1,0 +1,79 @@
+---
+titulo: "Node.js y Express"
+descripcion: "Entorno de ejecución Node.js, framework Express, middlewares, REST API, persistencia con FS, sesiones y gestión de procesos."
+modulo: 6
+---
+
+# Módulo VI — Node.js y Express
+
+Node.js es un entorno de ejecución de JavaScript construido sobre el motor V8 de Chrome. Permite ejecutar JavaScript fuera del navegador, con acceso al sistema de archivos, la red y los recursos del sistema operativo.
+
+Express es el framework web más popular del ecosistema Node.js: minimalista, flexible y con una enorme comunidad. Juntos forman la base de la mayoría de las APIs y servidores backend con JavaScript.
+
+## ¿Qué aprenderás en este módulo?
+
+- Gestionar proyectos Node.js con NPM y entender el ecosistema de paquetes
+- Comprender el event loop y el modelo de asincronía de Node.js
+- Crear servidores HTTP con el módulo nativo y con Express
+- Diseñar middlewares para validación, logging y autenticación
+- Construir una REST API completa con persistencia en JSON
+- Manipular el sistema de archivos con `fs` (síncrono, callbacks y async/await)
+- Gestionar sesiones de usuario con `express-session`
+- Renderizar vistas con el motor de plantillas Handlebars
+- Escalar aplicaciones con PM2 en modo cluster
+- Administrar procesos Node.js en producción
+
+## Estructura del módulo
+
+| Tema | Tipo | Duración |
+|------|------|----------|
+| NPM: Comandos y Gestión de Paquetes | Teoría | 2h |
+| Node.js y Express: Fundamentos | Teoría | 3h |
+| Primeros Pasos con Express | Práctica | 1h |
+| Middleware en Express | Teoría | 2h |
+| Rutas y Respuestas Estándar | Práctica | 1h |
+| REST API Profesional con Express | Proyecto | 4h |
+| Gestión Avanzada de Paquetes NPM | Práctica | 2h |
+| Manipulación de Imágenes con Jimp | Práctica | 2h |
+| Sesiones y Autenticación con Express | Práctica | 2h |
+| Servidor Web Full-Stack con Handlebars | Proyecto | 4h |
+| Persistencia en Archivos con FS (Parte I) | Teoría | 3h |
+| Persistencia en Archivos con FS (Parte II) | Proyecto | 3h |
+| Escalabilidad con PM2 y Load Balancing | Teoría | 3h |
+| Gestión de Procesos en Node.js | Práctica | 4h |
+
+## Requisitos previos
+
+- JavaScript ES6+ sólido (módulos 3 y 4 completados)
+- Conocimiento de bases de datos relacionales (módulo 5)
+- Node.js instalado (v18 LTS o superior) y npm (v9+)
+
+## Prerrequisitos
+
+Tener instalado **Node.js** (versión 20 LTS o superior).
+
+## Proyecto integrador
+
+### Servidor Backend con Node.js y Express
+
+Construir un **servidor backend completo** con Node.js y Express que integre todos los conceptos del módulo: REST API, autenticación por sesiones, persistencia en archivos y vistas server-side, configurado para producción.
+
+**Dataset inicial:** [tareas.json](/data/tareas.json) — 10 tareas con `id`, `titulo`, `descripcion`, `completada` y `fechaCreacion` para sembrar el archivo de persistencia.
+
+**Paso a paso**
+
+1. Inicializa el proyecto (`npm init`) e instala las dependencias: `express`, `express-session`, `express-handlebars`, `dotenv`.
+2. Crea el archivo `.env` con `PORT`, `SESSION_SECRET` y `NODE_ENV`; añade `.env` al `.gitignore`.
+3. Implementa el **middleware de logging** (método + ruta + tiempo) y el **middleware global de errores** (4 parámetros).
+4. Crea la **autenticación**: rutas `POST /auth/login` y `POST /auth/logout` con `express-session`, y middleware `requireAuth` para proteger rutas privadas.
+5. Implementa el **CRUD de tareas** con persistencia en archivo JSON usando `fs/promises`: `GET /api/tareas`, `POST /api/tareas`, `PUT /api/tareas/:id`, `DELETE /api/tareas/:id`.
+6. Agrega al menos **2 vistas Handlebars**: una pública (lista de tareas) y una privada (panel de administración).
+7. Crea `ecosystem.config.js` y documenta los comandos PM2 para ejecutar el servidor en modo **cluster** con 2 instancias.
+
+**Entregable**
+
+Sube el **link del repositorio GitHub** que contenga:
+- El proyecto completo con estructura de carpetas clara (`routes/`, `controllers/`, `views/`, `public/`)
+- Archivo `.env.sample` con las variables requeridas (sin valores reales)
+- `README.md` con instrucciones de instalación, variables de entorno y ejecución
+- El repositorio **no debe incluir** `node_modules/` ni el archivo `.env`

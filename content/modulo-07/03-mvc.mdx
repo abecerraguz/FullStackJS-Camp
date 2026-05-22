@@ -1,0 +1,402 @@
+---
+titulo: "Arquitectura MVC con Express"
+tipo: teoria
+duracion: 8h
+objetivos:
+  - Separar responsabilidades en Modelo, Controlador y Rutas
+  - Encapsular la conexión al Pool en una clase ConexionDB con campos privados
+  - Implementar lógica de reintento al arrancar el servidor
+  - Manejar errores enriquecidos con códigos de PostgreSQL
+  - Configurar el middleware global de errores de Express 5
+recursos:
+  - { nombre: "Express 5 — error handling", url: "https://expressjs.com/en/guide/error-handling.html" }
+  - { nombre: "Códigos de error PostgreSQL", url: "https://www.postgresql.org/docs/current/errcodes-appendix.html" }
+---
+
+# Arquitectura MVC con Express y PostgreSQL
+
+## ¿Por qué MVC?
+
+Cuando un servidor Express crece, poner toda la lógica en `server.js` se vuelve insostenible. El patrón **MVC** distribuye responsabilidades:
+
+```
+Petición HTTP
+     │
+     ▼
+ [ Ruta ]           routes/tareas.routes.js
+     │               Define el método y el path
+     ▼
+ [ Controlador ]    controller/tareasController.js
+     │               Valida input, llama al modelo, arma la respuesta
+     ▼
+ [ Modelo ]         models/Tarea.js
+                     Ejecuta el SQL, devuelve datos al controlador
+```
+
+## Estructura del proyecto
+
+```
+proyecto/
+├── .env
+├── server.js                      ← arranque, middleware, error handler
+├── config/
+│   └── db.js                      ← clase ConexionDB (Pool encapsulado)
+├── routes/
+│   └── tareas.routes.js           ← definición de rutas
+├── controller/
+│   └── tareasController.js        ← lógica HTTP
+├── models/
+│   └── Tarea.js                   ← SQL (CRUD)
+└── package.json
+```
+
+## La clase ConexionDB
+
+Encapsular el Pool en una clase tiene varias ventajas: campo `#pool` privado para evitar acceso accidental, lógica de reintento centralizada y un getter público de solo lectura.
+
+```javascript
+// config/db.js
+import "dotenv/config";
+import pkg from "pg";
+import chalk from "chalk";
+
+const { Pool } = pkg;
+
+class ConexionDB {
+  #pool;
+  #maxReintentos;
+  #delayReintento;
+
+  constructor() {
+    this.#maxReintentos  = Number(process.env.DB_MAX_REINTENTOS)  || 5;
+    this.#delayReintento = Number(process.env.DB_DELAY_REINTENTO) || 3000;
+
+    this.#pool = new Pool({
+      user:     process.env.DB_USER,
+      host:     process.env.DB_HOST,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      port:     Number(process.env.DB_PORT) || 5432,
+      max:      Number(process.env.DB_POOL_MAX) || 10,
+      idleTimeoutMillis:      Number(process.env.DB_POOL_IDLE_TIMEOUT)       || 30000,
+      connectionTimeoutMillis: Number(process.env.DB_POOL_CONNECTION_TIMEOUT) || 2000,
+    });
+
+    // Listener de errores pasivos: clientes inactivos que pierden conexión
+    this.#pool.on("error", (err) => {
+      console.error(chalk.yellow("[Pool] Error en cliente inactivo:", err.message));
+    });
+  }
+
+  // Getter público de solo lectura — lo usan los modelos
+  get pool() {
+    return this.#pool;
+  }
+
+  #esperar(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  // Verificación con reintentos al arrancar el servidor
+  async verificarConexion() {
+    let intentos = 0;
+    while (intentos < this.#maxReintentos) {
+      intentos++;
+      let client;
+      try {
+        console.log(chalk.cyan(`[DB] Intento [${intentos}/${this.#maxReintentos}]...`));
+        client = await this.#pool.connect();
+        const { rows } = await client.query("SELECT NOW() AS hora_servidor");
+        console.log(chalk.green(`[DB] Conectado. Hora servidor: ${rows[0].hora_servidor}`));
+        return true;
+      } catch (error) {
+        console.error(chalk.red(`[DB] Fallo intento ${intentos}: ${error.message}`));
+        if (intentos < this.#maxReintentos) {
+          await this.#esperar(this.#delayReintento);
+        }
+      } finally {
+        if (client) client.release();
+      }
+    }
+    throw new Error("No se pudo conectar a la base de datos tras todos los intentos.");
+  }
+
+  async cerrarPool() {
+    await this.#pool.end();
+    console.log("[DB] Pool cerrado.");
+  }
+}
+
+// Singleton — toda la app comparte la misma instancia
+export default new ConexionDB();
+```
+
+<Callout type="info">
+El **singleton** garantiza que solo existe un Pool en toda la aplicación. Si importas `db` en 10 modelos diferentes, todos comparten el mismo pool de conexiones.
+</Callout>
+
+## El Modelo
+
+El modelo ejecuta el SQL y devuelve datos limpios. Los errores se enriquecen con información de PostgreSQL antes de propagarse.
+
+```javascript
+// models/Tarea.js
+import db from "../config/db.js";
+
+const pool = db.pool;
+
+// Enriquece el error con metadatos de PostgreSQL para mejor debugging
+const construirError = (error, operacion) => {
+  const err = new Error(`[${operacion}] ${error.message}`);
+  err.codigoPg  = error.code   ?? "N/A";  // ej: '23505' = unique_violation
+  err.detallePg = error.detail ?? null;   // ej: 'Key (email)=(x) already exists'
+  err.operacion = operacion;
+  err.stack     = error.stack;
+
+  // Traducir códigos PG a HTTP status codes semánticos
+  if (error.code === "23503") {           // foreign_key_violation
+    err.statusCode = 409;
+    err.message = "No se puede eliminar: el registro está referenciado por otros datos.";
+  }
+  if (error.code === "23505") {           // unique_violation
+    err.statusCode = 409;
+    err.message = `Ya existe un registro con ese valor. ${error.detail ?? ""}`;
+  }
+
+  return err;
+};
+
+export const todasLasTareas = async () => {
+  let client;
+  try {
+    client = await pool.connect();
+    const { rows } = await client.query("SELECT * FROM tareas ORDER BY id DESC");
+    return rows;
+  } catch (error) {
+    throw construirError(error, "todasLasTareas");
+  } finally {
+    if (client) client.release();
+  }
+};
+
+export const nuevaTarea = async ({ titulo, descripcion }) => {
+  let client;
+  try {
+    client = await pool.connect();
+    const { rows } = await client.query(
+      "INSERT INTO tareas (titulo, descripcion) VALUES ($1, $2) RETURNING *",
+      [titulo, descripcion]
+    );
+    return rows[0];
+  } catch (error) {
+    throw construirError(error, "nuevaTarea");
+  } finally {
+    if (client) client.release();
+  }
+};
+
+export const editarTarea = async (id, { titulo, descripcion }) => {
+  let client;
+  try {
+    client = await pool.connect();
+    const { rows } = await client.query(
+      "UPDATE tareas SET titulo = $1, descripcion = $2 WHERE id = $3 RETURNING *",
+      [titulo, descripcion, id]
+    );
+    return rows[0] ?? null; // null si el id no existe
+  } catch (error) {
+    throw construirError(error, "editarTarea");
+  } finally {
+    if (client) client.release();
+  }
+};
+
+export const eliminarTarea = async (id) => {
+  let client;
+  try {
+    client = await pool.connect();
+    const { rows } = await client.query(
+      "DELETE FROM tareas WHERE id = $1 RETURNING *",
+      [id]
+    );
+    return rows[0] ?? null;
+  } catch (error) {
+    throw construirError(error, "eliminarTarea");
+  } finally {
+    if (client) client.release();
+  }
+};
+```
+
+## El Controlador
+
+El controlador valida el input HTTP, llama al modelo y construye la respuesta. **No escribe SQL** y **no maneja conexiones**.
+
+```javascript
+// controller/tareasController.js
+import { todasLasTareas, nuevaTarea, editarTarea, eliminarTarea } from "../models/Tarea.js";
+
+const crearError = (mensaje, statusCode = 400) => {
+  const err = new Error(mensaje);
+  err.statusCode = statusCode;
+  return err;
+};
+
+const validarId = (idTexto) => {
+  const id = Number(idTexto);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw crearError("El parámetro id debe ser un número entero positivo.", 400);
+  }
+  return id;
+};
+
+const normalizar = (valor) => String(valor ?? "").trim();
+
+export const obtenerTareas = async (req, res, next) => {
+  try {
+    const tareas = await todasLasTareas();
+    res.status(200).json(tareas);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const crearTarea = async (req, res, next) => {
+  try {
+    const titulo      = normalizar(req.body.titulo);
+    const descripcion = normalizar(req.body.descripcion);
+
+    if (!titulo || !descripcion) {
+      throw crearError('Los campos "titulo" y "descripcion" son obligatorios.');
+    }
+
+    const tarea = await nuevaTarea({ titulo, descripcion });
+    res.status(201).json(tarea);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const actualizarTarea = async (req, res, next) => {
+  try {
+    const id          = validarId(req.params.id);
+    const titulo      = normalizar(req.body.titulo);
+    const descripcion = normalizar(req.body.descripcion);
+
+    if (!titulo || !descripcion) {
+      throw crearError('Los campos "titulo" y "descripcion" son obligatorios.');
+    }
+
+    const tarea = await editarTarea(id, { titulo, descripcion });
+    if (!tarea) throw crearError("Tarea no encontrada.", 404);
+    res.status(200).json(tarea);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const borrarTarea = async (req, res, next) => {
+  try {
+    const id    = validarId(req.params.id);
+    const tarea = await eliminarTarea(id);
+    if (!tarea) throw crearError("Tarea no encontrada.", 404);
+    res.status(200).json({ mensaje: "Tarea eliminada.", tarea });
+  } catch (error) {
+    next(error);
+  }
+};
+```
+
+## Las Rutas
+
+```javascript
+// routes/tareas.routes.js
+import { Router } from "express";
+import {
+  obtenerTareas,
+  crearTarea,
+  actualizarTarea,
+  borrarTarea,
+} from "../controller/tareasController.js";
+
+const router = Router();
+
+router.get("/",        obtenerTareas);
+router.post("/",       crearTarea);
+router.put("/:id",     actualizarTarea);
+router.delete("/:id",  borrarTarea);
+
+export default router;
+```
+
+## El Servidor
+
+```javascript
+// server.js
+import "dotenv/config";
+import express from "express";
+import chalk from "chalk";
+import db from "./config/db.js";
+import tareasRouter from "./routes/tareas.routes.js";
+
+const app  = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json());
+app.use("/api/tareas", tareasRouter);
+
+// ── Middleware global de errores (Express 5) ──────────────────────────────────
+// Recibe 4 parámetros: (err, req, res, next)
+// Se ejecuta cuando cualquier controlador llama a next(error)
+app.use((err, req, res, next) => {
+  const status = err.statusCode ?? 500;
+  const body = {
+    ok:        false,
+    mensaje:   err.message,
+    operacion: err.operacion  ?? undefined,
+    codigoPg:  err.codigoPg   ?? undefined,
+    detallePg: err.detallePg  ?? undefined,
+  };
+
+  // Solo incluimos el stack en desarrollo
+  if (process.env.NODE_ENV !== "production") {
+    body.stack = err.stack;
+  }
+
+  res.status(status).json(body);
+});
+
+// ── Manejadores globales del proceso ─────────────────────────────────────────
+process.on("uncaughtException", (error) => {
+  console.error(chalk.bgRed.white("[PROCESO] uncaughtException:", error.message));
+  db.cerrarPool().finally(() => process.exit(1));
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error(chalk.bgRed.white("[PROCESO] unhandledRejection:", reason));
+});
+
+// ── Arranque con verificación de BD ──────────────────────────────────────────
+const iniciar = async () => {
+  await db.verificarConexion(); // Lanza error si no puede conectar
+  app.listen(PORT, () => {
+    console.log(chalk.green(`[SERVER] Escuchando en http://localhost:${PORT}`));
+  });
+};
+
+iniciar().catch((err) => {
+  console.error(chalk.red("[SERVER] No se pudo iniciar:", err.message));
+  process.exit(1);
+});
+```
+
+## Códigos de error de PostgreSQL más comunes
+
+| Código | Nombre | Significado | HTTP sugerido |
+|--------|--------|-------------|--------------|
+| `23505` | `unique_violation` | Valor duplicado (UNIQUE constraint) | 409 |
+| `23503` | `foreign_key_violation` | FK no existe o no se puede eliminar | 409 |
+| `23502` | `not_null_violation` | Campo NOT NULL con valor nulo | 400 |
+| `22P02` | `invalid_text_representation` | Tipo de dato inválido (ej: texto en INT) | 400 |
+| `42P01` | `undefined_table` | La tabla no existe | 500 |
+| `ECONNREFUSED` | — | PostgreSQL no está corriendo | 503 |

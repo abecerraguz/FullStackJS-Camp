@@ -1,0 +1,203 @@
+---
+titulo: "Funciones en JavaScript (Parte I)"
+descripcion: "Funciones declaradas, expresadas y arrow functions. Parámetros, argumentos, return, scope y el concepto de hoisting."
+tipo: "practica"
+modulo: 3
+duracion: "6h"
+objetivos:
+  - "Distinguir entre declarar e invocar una función."
+  - "Entender la diferencia entre función declarada, expresión y arrow function."
+  - "Comprender el concepto de hoisting."
+  - "Usar parámetros por defecto y el operador rest (...)."
+  - "Diferenciar console.log de return."
+conceptosClave:
+  - "Declaración vs. invocación"
+  - "Hoisting"
+  - "Parámetros vs. argumentos"
+  - "Valor de retorno (return)"
+  - "Arrow function"
+  - "Parámetros por defecto"
+  - "Rest parameters"
+recursos:
+  - { nombre: "JavaScript.info — Funciones", url: "https://es.javascript.info/function-basics" }
+  - { nombre: "MDN — Funciones", url: "https://developer.mozilla.org/es/docs/Web/JavaScript/Guide/Functions" }
+---
+
+# Funciones en JavaScript (Parte I)
+
+Una **función** es un bloque de código reutilizable que recibe datos (parámetros), los procesa y puede devolver un resultado. Son el bloque de construcción más importante de JavaScript.
+
+---
+
+## 1. Declarar vs. invocar
+
+```javascript
+// DECLARAR — define la función (como escribir una receta)
+function saludar(nombre) {
+  return `¡Hola, ${nombre}!`;
+}
+
+// INVOCAR — ejecuta la función (como cocinar la receta)
+const mensaje = saludar("Ana");
+console.log(mensaje); // ¡Hola, Ana!
+
+// Sin invocar, la función NO hace nada
+saludar("Pedro"); // no guarda el resultado
+```
+
+---
+
+## 2. Tipos de funciones
+
+### Función declarada (hoisting incluido)
+
+```javascript
+// ✅ Se puede llamar ANTES de declararla gracias al hoisting
+console.log(sumar(3, 4)); // 7
+
+function sumar(a, b) {
+  return a + b;
+}
+```
+
+### Función expresión (sin hoisting)
+
+```javascript
+// ❌ Esto lanzaría un error — aún no está definida
+// console.log(multiplicar(3, 4));
+
+const multiplicar = function(a, b) {
+  return a * b;
+};
+
+console.log(multiplicar(3, 4)); // 12
+```
+
+### Arrow function (ES6+)
+
+```javascript
+// Forma completa
+const dividir = (a, b) => {
+  return a / b;
+};
+
+// Retorno implícito (sin llaves → retorno automático)
+const cuadrado = (n) => n * n;
+const doble    = n  => n * 2;   // paréntesis opcional con un solo parámetro
+const pi       = () => 3.14159; // sin parámetros → () obligatorio
+
+console.log(cuadrado(5)); // 25
+console.log(doble(7));    // 14
+```
+
+<Callout type="tip">
+Prefiere arrow functions para funciones cortas y callbacks. Usa funciones declaradas cuando necesites hoisting o cuando la función sea el bloque principal de un módulo.
+</Callout>
+
+---
+
+## 3. Parámetros vs. argumentos
+
+```javascript
+// nombre y edad son PARÁMETROS (variables en la definición)
+function presentar(nombre, edad) {
+  return `Soy ${nombre} y tengo ${edad} años.`;
+}
+
+// "Ana" y 25 son ARGUMENTOS (valores reales al llamar)
+console.log(presentar("Ana", 25));
+```
+
+### Parámetros por defecto
+
+```javascript
+function saludar(nombre = "estudiante", idioma = "es") {
+  if (idioma === "en") return `Hello, ${nombre}!`;
+  return `¡Hola, ${nombre}!`;
+}
+
+console.log(saludar());          // ¡Hola, estudiante!
+console.log(saludar("Ana"));     // ¡Hola, Ana!
+console.log(saludar("Ana", "en")); // Hello, Ana!
+```
+
+### Rest parameters — agrupar argumentos en un array
+
+```javascript
+function sumarTodos(...numeros) {
+  return numeros.reduce((total, n) => total + n, 0);
+}
+
+console.log(sumarTodos(1, 2, 3));       // 6
+console.log(sumarTodos(10, 20, 30, 40)); // 100
+```
+
+---
+
+## 4. console.log vs. return
+
+Esta es una confusión muy común al comenzar:
+
+```javascript
+// console.log solo MUESTRA en la consola — no devuelve valor
+function mostrarDoble(n) {
+  console.log(n * 2);  // 10 aparece en consola
+  // sin return → la función devuelve undefined
+}
+
+const resultado = mostrarDoble(5);
+console.log(resultado); // undefined ← no se puede reutilizar
+
+// return DEVUELVE el valor para usarlo fuera
+function calcularDoble(n) {
+  return n * 2;
+}
+
+const doble = calcularDoble(5);
+console.log(doble);      // 10
+console.log(doble + 1);  // 11 ← ahora sí se puede reutilizar
+```
+
+<Callout type="warning">
+Si necesitas usar el resultado de una función en otro lugar del código, **debes usar `return`**. `console.log` es solo para depuración.
+</Callout>
+
+---
+
+## 5. Práctica interactiva
+
+<CodeEditor
+  initialCode={`// Ejercicio 1: Contador de visitas
+// Escribe una función que reciba un número de visitas
+// y devuelva un mensaje apropiado:
+// 0 visitas    → "Nadie ha visitado el sitio aún."
+// 1 visita     → "1 persona ha visitado el sitio."
+// N visitas    → "N personas han visitado el sitio."
+
+function mensajeVisitas(visitas) {
+  // Tu código aquí
+}
+
+// Ejercicio 2: Temperatura
+// Convierte Celsius a Fahrenheit: F = (C × 9/5) + 32
+const celsiusAFahrenheit = (celsius) => {
+  // Tu código aquí
+};
+
+function solution() {
+  const res1 = [0, 1, 150].map(v => mensajeVisitas(v));
+  const res2 = [0, 100, -40].map(c => \`\${c}°C = \${celsiusAFahrenheit(c)}°F\`);
+  return [...res1, ...res2].join("\\n");
+}
+`}
+/>
+
+---
+
+## 6. Ejercicios adicionales
+
+1. **Calculador de IMC:** Escribe una función `calcularIMC(peso, altura)` que retorne el IMC redondeado a 1 decimal y una función `clasificarIMC(imc)` que retorne: "Bajo peso", "Normal", "Sobrepeso" u "Obesidad".
+
+2. **Generador de saludos:** Escribe una función `crearSaludo(idioma)` que retorne **otra función** que reciba un nombre y lo salude en el idioma configurado (es, en, fr). Este es tu primer closure.
+
+3. **Validador de contraseña:** Escribe una función `validarPassword(password)` que retorne `true` si la contraseña tiene al menos 8 caracteres, 1 mayúscula y 1 número.

@@ -1,0 +1,302 @@
+---
+titulo: "Introducción a SQL"
+descripcion: "Modelo relacional, bases de datos, tablas, tipos de datos y consultas SELECT fundamentales."
+tipo: "teoria"
+modulo: 5
+duracion: "4h"
+objetivos:
+  - "Comprender qué es una base de datos relacional y el modelo de tablas."
+  - "Distinguir SQL de los motores de bases de datos (MySQL, PostgreSQL)."
+  - "Escribir consultas SELECT básicas con WHERE, ORDER BY y LIMIT."
+  - "Usar funciones de agregación: COUNT, SUM, AVG, MIN, MAX."
+  - "Combinar tablas con JOIN."
+conceptosClave:
+  - "Base de datos relacional"
+  - "Tabla / Fila / Columna"
+  - "Clave primaria (PK)"
+  - "Clave foránea (FK)"
+  - "SELECT / FROM / WHERE"
+  - "JOIN"
+  - "GROUP BY / HAVING"
+recursos:
+  - { nombre: "SQL Tutorial — W3Schools", url: "https://www.w3schools.com/sql/" }
+  - { nombre: "PostgreSQL Docs", url: "https://www.postgresql.org/docs/current/" }
+  - { nombre: "SQLZoo — Práctica interactiva", url: "https://sqlzoo.net" }
+---
+
+# Introducción a SQL
+
+**SQL (Structured Query Language)** es el lenguaje estándar para comunicarse con bases de datos relacionales. Lo usan MySQL, PostgreSQL, SQL Server, SQLite y Oracle — aprender SQL en uno es transferible a todos.
+
+---
+
+## El modelo relacional
+
+Una **base de datos relacional** organiza la información en **tablas** (también llamadas relaciones):
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ Tabla: usuarios                                          │
+├──────────┬──────────┬─────────────────────┬─────────────┤
+│ user_id  │ nombre   │ correo              │ saldo       │
+│ (PK)     │          │                     │             │
+├──────────┼──────────┼─────────────────────┼─────────────┤
+│ 1        │ Juan     │ juan@example.com    │ 50000.00    │
+│ 2        │ Ana      │ ana@example.com     │ 120000.00   │
+│ 3        │ Pedro    │ pedro@example.com   │ 8000.00     │
+└──────────┴──────────┴─────────────────────┴─────────────┘
+```
+
+Conceptos fundamentales:
+
+| Concepto | Definición |
+|----------|-----------|
+| **Tabla** | Colección de filas del mismo tipo de entidad |
+| **Fila / registro** | Una instancia de esa entidad |
+| **Columna / campo** | Un atributo de cada fila |
+| **Clave Primaria (PK)** | Identificador único e irrepetible de cada fila |
+| **Clave Foránea (FK)** | Columna que referencia la PK de otra tabla |
+
+---
+
+## SQL vs Motor de base de datos
+
+| SQL | Motor (RDBMS) |
+|-----|--------------|
+| El **lenguaje** para escribir consultas | El **programa** que ejecuta esas consultas |
+| Estándar ISO | MySQL, PostgreSQL, SQL Server, SQLite |
+| `SELECT * FROM usuarios` | Sabe cómo leer los archivos de disco |
+
+> En este módulo usamos **MySQL** para la demo (Alke Wallet). Los conceptos son idénticos en PostgreSQL — las diferencias se señalan cuando aplica.
+
+---
+
+## Tipos de datos principales
+
+| Tipo | Uso | Ejemplo |
+|------|-----|---------|
+| `INT` / `BIGINT` | Números enteros | `user_id`, `edad` |
+| `DECIMAL(12,2)` | Decimales exactos (dinero) | `saldo`, `precio` |
+| `VARCHAR(n)` | Texto variable (máximo n chars) | `nombre`, `correo` |
+| `TEXT` | Texto largo sin límite | `descripcion` |
+| `DATE` | Fecha (sin hora) | `2024-10-01` |
+| `DATETIME` | Fecha y hora | `2024-10-01 10:30:00` |
+| `BOOLEAN` | Verdadero/falso | `activo` |
+| `ENUM(...)` | Lista fija de valores | `'pendiente','pagado'` |
+
+---
+
+## SELECT — Consultar datos
+
+### Básico
+
+```sql
+-- Todos los registros y columnas
+SELECT * FROM usuarios;
+
+-- Columnas específicas
+SELECT nombre, correo, saldo
+FROM usuarios;
+
+-- Con alias (apodo de columna)
+SELECT nombre AS "Nombre del usuario",
+       saldo  AS "Saldo disponible"
+FROM usuarios;
+```
+
+### WHERE — Filtrar filas
+
+```sql
+-- Igual
+SELECT * FROM usuarios WHERE user_id = 2;
+
+-- Comparadores: = < > <= >= !=
+SELECT * FROM usuarios WHERE saldo > 10000;
+
+-- AND / OR
+SELECT * FROM usuarios
+WHERE saldo > 5000
+  AND saldo < 100000;
+
+-- IN (lista de valores)
+SELECT * FROM usuarios
+WHERE user_id IN (1, 3);
+
+-- LIKE — búsqueda de texto
+-- % = cualquier cantidad de caracteres
+-- _ = exactamente un caracter
+SELECT * FROM usuarios
+WHERE nombre LIKE 'J%';    -- nombres que empiezan con J
+
+-- IS NULL / IS NOT NULL
+SELECT * FROM productos
+WHERE descripcion IS NULL;
+```
+
+### ORDER BY y LIMIT
+
+```sql
+-- Ordenar ascendente (ASC por defecto)
+SELECT * FROM usuarios
+ORDER BY saldo DESC;   -- de mayor a menor saldo
+
+-- Limitar resultados (paginación)
+SELECT * FROM usuarios
+ORDER BY user_id
+LIMIT 10 OFFSET 0;     -- primeros 10 (página 1)
+
+-- LIMIT 10 OFFSET 10; -- página 2
+```
+
+---
+
+## Funciones de agregación
+
+```sql
+-- Contar filas
+SELECT COUNT(*) AS total_usuarios FROM usuarios;
+
+-- Sumar
+SELECT SUM(saldo) AS saldo_total FROM usuarios;
+
+-- Promedio
+SELECT AVG(saldo) AS saldo_promedio FROM usuarios;
+
+-- Mínimo y máximo
+SELECT MIN(saldo) AS menor, MAX(saldo) AS mayor
+FROM usuarios;
+```
+
+### GROUP BY — Agrupar y agregar
+
+```sql
+-- Total enviado por cada remitente
+SELECT sender_user_id,
+       COUNT(*)         AS total_transacciones,
+       SUM(valor)       AS monto_enviado
+FROM transacciones
+GROUP BY sender_user_id
+ORDER BY monto_enviado DESC;
+
+-- HAVING: filtrar sobre el resultado del GROUP BY
+-- (WHERE filtra antes de agrupar, HAVING filtra después)
+SELECT sender_user_id,
+       SUM(valor) AS monto_enviado
+FROM transacciones
+GROUP BY sender_user_id
+HAVING SUM(valor) > 10000;
+```
+
+---
+
+## JOIN — Combinar tablas
+
+```sql
+-- Base de datos Alke Wallet:
+-- usuarios (user_id, nombre, correo, saldo)
+-- transacciones (transaction_id, sender_user_id, receiver_user_id, valor, transaction_date)
+
+-- INNER JOIN: solo filas que coinciden en ambas tablas
+SELECT
+  u.nombre           AS remitente,
+  t.valor,
+  t.transaction_date
+FROM transacciones t
+  INNER JOIN usuarios u ON u.user_id = t.sender_user_id
+ORDER BY t.transaction_date DESC;
+```
+
+| Tipo de JOIN | Retorna |
+|-------------|---------|
+| `INNER JOIN` | Solo filas con coincidencia en ambas tablas |
+| `LEFT JOIN` | Todas las filas de la tabla izquierda + coincidencias de la derecha (NULL si no hay) |
+| `RIGHT JOIN` | Todas las filas de la tabla derecha + coincidencias de la izquierda |
+
+```sql
+-- LEFT JOIN: todos los usuarios, incluso los que nunca enviaron dinero
+SELECT
+  u.nombre,
+  COUNT(t.transaction_id) AS transacciones_enviadas
+FROM usuarios u
+  LEFT JOIN transacciones t ON t.sender_user_id = u.user_id
+GROUP BY u.user_id, u.nombre
+ORDER BY transacciones_enviadas DESC;
+```
+
+---
+
+## Consultas con múltiples JOINs
+
+```sql
+-- Quién envió y quién recibió, con nombres
+SELECT
+  e.nombre       AS remitente,
+  r.nombre       AS receptor,
+  t.valor,
+  t.transaction_date
+FROM transacciones t
+  JOIN usuarios e ON e.user_id = t.sender_user_id
+  JOIN usuarios r ON r.user_id = t.receiver_user_id
+ORDER BY t.transaction_date;
+```
+
+<Callout type="tip">
+Cuando haces JOIN de una tabla consigo misma (como `usuarios` aparece dos veces arriba), **es obligatorio usar alias** (`e` y `r`) para distinguir cuál es cuál. El motor sabe que son la misma tabla, pero tú le dices qué rol juega cada instancia.
+</Callout>
+
+---
+
+## Script base: Alke Wallet
+
+Usa este script para crear la base de datos de práctica del módulo:
+
+```sql
+-- 1) Crear y seleccionar la base de datos
+DROP DATABASE IF EXISTS alke_wallet;
+CREATE DATABASE alke_wallet CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE alke_wallet;
+
+-- 2) Tabla usuarios
+CREATE TABLE usuarios (
+  user_id    INT AUTO_INCREMENT PRIMARY KEY,
+  nombre     VARCHAR(80)    NOT NULL,
+  correo     VARCHAR(120)   NOT NULL UNIQUE,
+  contrasena VARCHAR(120)   NOT NULL,
+  saldo      DECIMAL(12,2)  NOT NULL DEFAULT 0,
+  created_at DATE           NOT NULL DEFAULT (CURRENT_DATE)
+);
+
+-- 3) Tabla monedas
+CREATE TABLE monedas (
+  currency_id     INT AUTO_INCREMENT PRIMARY KEY,
+  currency_name   VARCHAR(60) NOT NULL,
+  currency_symbol VARCHAR(10) NOT NULL
+);
+
+-- 4) Tabla transacciones
+CREATE TABLE transacciones (
+  transaction_id   INT AUTO_INCREMENT PRIMARY KEY,
+  sender_user_id   INT           NOT NULL,
+  receiver_user_id INT           NOT NULL,
+  valor            DECIMAL(12,2) NOT NULL,
+  transaction_date DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_sender   FOREIGN KEY (sender_user_id)   REFERENCES usuarios(user_id),
+  CONSTRAINT fk_receiver FOREIGN KEY (receiver_user_id) REFERENCES usuarios(user_id)
+);
+
+-- 5) Datos de prueba
+INSERT INTO usuarios (nombre, correo, contrasena, saldo, created_at) VALUES
+  ('Juan',  'juan@example.com',  '1234', 50000,  '2019-12-15'),
+  ('Ana',   'ana@example.com',   '1234', 120000, '2021-06-10'),
+  ('Pedro', 'pedro@example.com', '1234', 8000,   '2023-03-05');
+
+INSERT INTO monedas (currency_name, currency_symbol) VALUES
+  ('Peso chileno', 'CLP'),
+  ('Dólar',        'USD'),
+  ('Euro',         'EUR');
+
+INSERT INTO transacciones (sender_user_id, receiver_user_id, valor, transaction_date) VALUES
+  (1, 2, 15000, '2024-10-01 10:00:00'),
+  (2, 1, 25000, '2024-10-02 12:30:00'),
+  (3, 1, 4000,  '2024-10-03 09:15:00');
+```

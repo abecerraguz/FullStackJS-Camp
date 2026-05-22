@@ -1,0 +1,34 @@
+---
+titulo: "Proyecto integrador"
+tipo: proyecto
+duracion: 8h
+objetivos:
+  - Diseñar un modelo entidad-relación para un sistema de billetera digital
+  - Implementar el esquema de base de datos con DDL completo y constraints
+  - Poblar y consultar la base de datos usando DML con JOINs y agregaciones
+  - Ejecutar una transacción ACID con manejo de errores y ROLLBACK
+---
+
+# Proyecto integrador
+
+## Alke Wallet — Base de Datos SQL
+
+Diseñar e implementar la base de datos **Alke Wallet**: un sistema de billetera digital con usuarios, monedas y transacciones entre cuentas, aplicando modelado entidad-relación, DDL, DML y transacciones ACID.
+
+**Paso a paso**
+
+1. Diseña el **Modelo Entidad-Relación (MER)** con al menos 3 entidades: `usuarios`, `monedas` y `transacciones`. Identifica PKs, FKs y cardinalidades.
+2. Escribe el script **DDL** (`schema.sql`): `CREATE TABLE` con tipos correctos, `PRIMARY KEY`, `FOREIGN KEY`, `NOT NULL` y `CHECK` constraints.
+3. Escribe el script **DML** (`seed.sql`): inserta mínimo 5 usuarios, 3 monedas y 10 transacciones de ejemplo.
+4. Escribe consultas de **lectura** (`queries.sql`): balance por usuario, historial de transacciones con `JOIN`, top 3 usuarios con mayor saldo.
+5. Implementa una **transacción** que transfiera saldo entre dos usuarios con `BEGIN`, `COMMIT` y `ROLLBACK` ante saldo insuficiente.
+6. Configura **usuarios y permisos**: crea un usuario `wallet_app` con solo los privilegios necesarios (`SELECT`, `INSERT`, `UPDATE`).
+
+**Entregable**
+
+Sube un archivo `.zip` con el nombre `apellido_nombre_modulo5.zip` que contenga:
+- `schema.sql` — DDL de todas las tablas
+- `seed.sql` — datos de prueba
+- `queries.sql` — consultas de lectura y la transacción
+- `mer.png` o `mer.pdf` — imagen del modelo entidad-relación
+- Capturas de DBeaver con las tablas creadas y al menos 2 consultas ejecutadas

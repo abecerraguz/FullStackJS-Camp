@@ -1,0 +1,282 @@
+---
+titulo: "Manipulación de Datos DML (Parte I)"
+descripcion: "INSERT, UPDATE, DELETE seguros y transacciones con COMMIT y ROLLBACK sobre la base de datos Alke Wallet."
+tipo: "practica"
+modulo: 5
+duracion: "6h"
+objetivos:
+  - "Insertar una o múltiples filas con INSERT INTO."
+  - "Actualizar datos de forma segura con UPDATE + WHERE."
+  - "Eliminar registros con DELETE + WHERE."
+  - "Entender el riesgo de UPDATE/DELETE sin WHERE."
+  - "Usar transacciones: SET autocommit, COMMIT y ROLLBACK."
+conceptosClave:
+  - "DML"
+  - "INSERT INTO"
+  - "UPDATE SET"
+  - "DELETE FROM"
+  - "Transacción"
+  - "COMMIT"
+  - "ROLLBACK"
+  - "AUTOCOMMIT"
+recursos:
+  - { nombre: "MySQL Docs — INSERT", url: "https://dev.mysql.com/doc/refman/8.0/en/insert.html" }
+  - { nombre: "MySQL Docs — Transacciones", url: "https://dev.mysql.com/doc/refman/8.0/en/commit.html" }
+---
+
+# Manipulación de Datos DML (Parte I)
+
+**DML (Data Manipulation Language)** es el subconjunto de SQL que se usa para **insertar, modificar y eliminar datos**. A diferencia de DDL (que cambia estructuras), DML opera sobre las filas de las tablas.
+
+<Callout type="warning">
+**Regla de oro antes de UPDATE o DELETE:** primero ejecuta el `SELECT` equivalente para ver exactamente qué filas serás afectadas. Luego convierte el SELECT en UPDATE/DELETE.
+</Callout>
+
+---
+
+## Base de trabajo: Alke Wallet
+
+Todas las prácticas usan la siguiente estructura (creada en el tema anterior):
+
+```sql
+USE alke_wallet;
+
+-- Recordatorio de tablas disponibles:
+-- usuarios (user_id, nombre, correo, contrasena, saldo, created_at)
+-- monedas (currency_id, currency_name, currency_symbol)
+-- transacciones (transaction_id, sender_user_id, receiver_user_id, valor, transaction_date)
+```
+
+---
+
+## INSERT — Insertar datos
+
+### Insertar una fila
+
+```sql
+-- Sintaxis básica: columnas explícitas + valores
+INSERT INTO usuarios (nombre, correo, contrasena, saldo)
+VALUES ('María', 'maria@example.com', 'pass123', 75000);
+
+-- Verificar
+SELECT * FROM usuarios WHERE correo = 'maria@example.com';
+```
+
+<Callout type="info">
+No es necesario incluir `user_id` porque es `AUTO_INCREMENT` — MySQL asigna el siguiente número automáticamente. Tampoco `created_at` porque tiene `DEFAULT (CURRENT_DATE)`.
+</Callout>
+
+### Insertar múltiples filas (más eficiente)
+
+```sql
+-- Un solo INSERT con múltiples VALUE sets
+INSERT INTO usuarios (nombre, correo, contrasena, saldo, created_at)
+VALUES
+  ('Carlos',  'carlos@example.com',  '1234', 45000,  '2024-01-10'),
+  ('Sofía',   'sofia@example.com',   '1234', 200000, '2024-02-20'),
+  ('Roberto', 'roberto@example.com', '1234', 15000,  '2024-03-05');
+
+SELECT COUNT(*) AS total FROM usuarios;  -- verificar
+```
+
+### INSERT con valores derivados
+
+```sql
+-- Insertar una transacción entre usuarios existentes
+INSERT INTO transacciones (sender_user_id, receiver_user_id, valor)
+VALUES (2, 3, 30000);
+-- transaction_date toma CURRENT_TIMESTAMP por defecto
+
+-- Verificar
+SELECT
+  e.nombre AS remitente,
+  r.nombre AS receptor,
+  t.valor,
+  t.transaction_date
+FROM transacciones t
+  JOIN usuarios e ON e.user_id = t.sender_user_id
+  JOIN usuarios r ON r.user_id = t.receiver_user_id
+ORDER BY t.transaction_id DESC
+LIMIT 1;
+```
+
+---
+
+## UPDATE — Modificar datos
+
+### Patrón seguro: SELECT → UPDATE
+
+```sql
+-- PASO 1: Verificar qué filas van a cambiar
+SELECT * FROM usuarios WHERE user_id = 1;
+
+-- PASO 2: Ejecutar el UPDATE con el mismo WHERE
+UPDATE usuarios
+SET saldo = saldo + 10000
+WHERE user_id = 1;
+
+-- PASO 3: Verificar el resultado
+SELECT user_id, nombre, saldo FROM usuarios WHERE user_id = 1;
+```
+
+### UPDATE con múltiples columnas
+
+```sql
+UPDATE usuarios
+SET saldo   = saldo - 5000,
+    correo  = 'juan.nuevo@example.com'
+WHERE user_id = 1;
+```
+
+### UPDATE con subquery
+
+```sql
+-- Acreditar el saldo del receptor después de una transferencia
+-- (en producción esto iría dentro de una transacción)
+UPDATE usuarios
+SET saldo = saldo + 15000
+WHERE user_id = (
+  SELECT receiver_user_id
+  FROM transacciones
+  WHERE transaction_id = 1
+);
+```
+
+<Callout type="warning">
+**¿Qué pasa si olvidas el WHERE?**
+
+```sql
+UPDATE usuarios SET saldo = 0;
+-- ☠️ Actualiza TODOS los usuarios. No hay manera de deshacer esto si autocommit = 1.
+```
+
+Por eso siempre: **SELECT primero, UPDATE después**.
+</Callout>
+
+---
+
+## DELETE — Eliminar datos
+
+### Patrón seguro: SELECT → DELETE
+
+```sql
+-- PASO 1: Ver qué se va a borrar
+SELECT * FROM usuarios WHERE created_at < '2020-01-01';
+
+-- PASO 2: Borrar (solo cuando estés seguro)
+DELETE FROM usuarios WHERE created_at < '2020-01-01';
+```
+
+### DELETE con JOIN (MySQL)
+
+```sql
+-- Borrar las transacciones de un usuario específico antes de borrar el usuario
+-- (para respetar la FK)
+DELETE t
+FROM transacciones t
+WHERE t.sender_user_id = 5
+   OR t.receiver_user_id = 5;
+
+-- Ahora sí podemos borrar el usuario
+DELETE FROM usuarios WHERE user_id = 5;
+```
+
+<Callout type="info">
+**DELETE vs TRUNCATE:**
+- `DELETE FROM tabla WHERE ...` — borra filas específicas, puede rollback
+- `TRUNCATE TABLE tabla` — borra **todas** las filas instantáneamente, reinicia `AUTO_INCREMENT`, no puede rollback en MySQL
+</Callout>
+
+---
+
+## Transacciones — COMMIT y ROLLBACK
+
+Una **transacción** agrupa un conjunto de operaciones que deben ejecutarse **todas o ninguna** (propiedad ACID — Atomicidad).
+
+### ¿Qué es autocommit?
+
+Por defecto MySQL opera en modo **autocommit = 1**: cada sentencia SQL se confirma automáticamente al ejecutarse.
+
+```sql
+SELECT @@autocommit;  -- 1 = activo (por defecto)
+```
+
+Cuando autocommit está activo, no puedes deshacer un UPDATE que ya ejecutaste.
+
+### Flujo con transacción explícita
+
+```sql
+-- 1) Desactivar autocommit
+SET autocommit = 0;
+
+-- 2) Ejecutar operaciones (quedan "pendientes")
+INSERT INTO usuarios (nombre, correo, contrasena, saldo)
+VALUES ('Usuario Test', 'test@demo.com', '1234', 1000);
+
+UPDATE usuarios
+SET saldo = saldo + 9000
+WHERE correo = 'test@demo.com';
+
+-- 3) Verificar el estado (antes de confirmar)
+SELECT * FROM usuarios WHERE correo = 'test@demo.com';
+-- Ves los datos PERO aún no están confirmados en disco
+
+-- 4A) Todo bien → CONFIRMAR
+COMMIT;
+
+-- 4B) Algo salió mal → DESHACER
+-- ROLLBACK;
+
+-- 5) Volver a autocommit (buena práctica)
+SET autocommit = 1;
+```
+
+### Simular una transferencia con transacción
+
+```sql
+SET autocommit = 0;
+
+-- Verificar saldo previo
+SELECT user_id, nombre, saldo FROM usuarios WHERE user_id IN (1, 2);
+
+-- Operación 1: descontar del remitente
+UPDATE usuarios SET saldo = saldo - 20000 WHERE user_id = 1;
+
+-- Operación 2: acreditar al receptor
+UPDATE usuarios SET saldo = saldo + 20000 WHERE user_id = 2;
+
+-- Registrar la transacción
+INSERT INTO transacciones (sender_user_id, receiver_user_id, valor)
+VALUES (1, 2, 20000);
+
+-- Verificar que todo cuadra antes de confirmar
+SELECT user_id, nombre, saldo FROM usuarios WHERE user_id IN (1, 2);
+
+-- Si todo está correcto:
+COMMIT;
+
+-- Si hubo un error en cualquier paso:
+-- ROLLBACK;  ← vuelve al estado inicial del SET autocommit = 0
+
+SET autocommit = 1;
+```
+
+<Callout type="tip">
+**¿Por qué son importantes las transacciones?**
+
+Imagina que el UPDATE del remitente se ejecuta pero la app se cae antes del UPDATE del receptor. Sin transacción, el dinero desaparece. Con transacción y ROLLBACK, ambas operaciones se deshacen y el sistema queda en estado consistente.
+</Callout>
+
+---
+
+## Resumen de sentencias DML
+
+| Sentencia | Uso |
+|-----------|-----|
+| `INSERT INTO tabla (...) VALUES (...)` | Insertar filas |
+| `UPDATE tabla SET col = val WHERE ...` | Modificar filas |
+| `DELETE FROM tabla WHERE ...` | Eliminar filas |
+| `SET autocommit = 0` | Iniciar modo transacción manual |
+| `COMMIT` | Confirmar cambios pendientes |
+| `ROLLBACK` | Deshacer cambios pendientes |
+| `SELECT @@autocommit` | Ver estado actual |

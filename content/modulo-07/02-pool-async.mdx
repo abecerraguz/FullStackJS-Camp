@@ -1,0 +1,212 @@
+---
+titulo: "Pool, rowMode y consultas parametrizadas"
+tipo: practica
+duracion: 6h
+objetivos:
+  - Configurar el Pool con parámetros avanzados de rendimiento
+  - Usar pool.connect() / client.release() para controlar el ciclo de vida de la conexión
+  - Escribir consultas parametrizadas con $1, $2 para prevenir SQL injection
+  - Entender rowMode "array" y cuándo es útil
+  - Realizar INSERT con RETURNING * para obtener el registro creado
+recursos:
+  - { nombre: "Pooling — node-postgres docs", url: "https://node-postgres.com/features/pooling" }
+  - { nombre: "Queries parametrizadas", url: "https://node-postgres.com/features/queries#parameterized-query" }
+---
+
+# Pool avanzado, rowMode y consultas parametrizadas
+
+## Configuración avanzada del Pool
+
+El Pool acepta parámetros de ajuste de rendimiento que son críticos para producción:
+
+```javascript
+// db/db.js
+import pg from "pg";
+import dotenv from "dotenv";
+
+const { Pool } = pg;
+dotenv.config();
+
+export const pool = new Pool({
+  user:     process.env.DB_USER,
+  host:     process.env.DB_HOST,
+  database: process.env.DB_DATABASE,
+  password: process.env.DB_PASSWORD,
+  port:     Number(process.env.DB_PORT) || 5432,
+
+  max:                    20,    // máximo de conexiones simultáneas
+  min:                    2,     // mínimo de conexiones en reposo
+  connectionTimeoutMillis: 2000, // ms máx para obtener una conexión
+  idleTimeoutMillis:      30000, // ms antes de destruir una conexión inactiva
+});
+```
+
+### Variables de entorno
+
+```bash
+# .env
+DB_USER=postgres
+DB_HOST=localhost
+DB_DATABASE=clientes
+DB_PASSWORD=postgres
+DB_PORT=5432
+```
+
+### ¿Qué valores usar?
+
+| Parámetro | Desarrollo | Producción |
+|-----------|-----------|-----------|
+| `max` | 5–10 | 20–50 (según RAM) |
+| `min` | 0–2 | 2–5 |
+| `connectionTimeoutMillis` | 2000 | 5000 |
+| `idleTimeoutMillis` | 30000 | 60000 |
+
+<Callout type="info">
+PostgreSQL por defecto acepta 100 conexiones simultáneas (`max_connections`). Si tienes múltiples procesos Node.js, distribuye ese límite entre todos (e.g., 3 procesos × `max: 30` = 90 conexiones).
+</Callout>
+
+## pool.query() vs pool.connect()
+
+Hay dos formas de ejecutar consultas:
+
+```
+pool.query(sql)
+  └─ Obtiene conexión → ejecuta → libera automáticamente
+  ✅ Simple para consultas únicas
+
+pool.connect() → client → client.query() → client.release()
+  └─ Tú controlas manualmente el ciclo de vida
+  ✅ Necesario para transacciones (BEGIN/COMMIT/ROLLBACK)
+```
+
+### Patrón con pool.connect() / client.release()
+
+```javascript
+import { pool } from "./db/db.js";
+
+const insertarUsuario = async () => {
+  let client;
+  try {
+    client = await pool.connect(); // 1. Obtener cliente del pool
+    const resultado = await client.query(
+      "INSERT INTO usuarios (nombre, email) VALUES ($1, $2) RETURNING *",
+      ["Ana García", "ana@demo.com"]
+    );
+    console.log("Usuario creado:", resultado.rows[0]);
+  } catch (error) {
+    console.error("Error:", error.stack);
+  } finally {
+    if (client) client.release(); // 2. SIEMPRE devolver al pool
+  }
+};
+
+insertarUsuario();
+```
+
+<Callout type="warning">
+Si no llamas a `client.release()`, la conexión queda "secuestrada". Con el tiempo el pool se agota y el servidor deja de responder. El bloque `finally` garantiza la liberación incluso si hay un error.
+</Callout>
+
+## Consultas parametrizadas
+
+Las consultas parametrizadas son la defensa principal contra **SQL injection**. En `pg`, los parámetros se escriben como `$1`, `$2`, etc. (índice basado en 1):
+
+```javascript
+// ❌ NUNCA hagas esto — SQL injection
+const sql = `SELECT * FROM usuarios WHERE email = '${email}'`;
+
+// ✅ Siempre usa parámetros
+const sql = "SELECT * FROM usuarios WHERE email = $1";
+const result = await pool.query(sql, [email]);
+```
+
+### Objeto de consulta (SQLQuery object)
+
+Para consultas complejas o reutilizables, puedes encapsular la consulta en un objeto:
+
+```javascript
+const SQLQuery = {
+  text:   "INSERT INTO usuarios (first_name, last_name, email, saldo) VALUES ($1, $2, $3, $4) RETURNING *",
+  values: ["Joselyn", "Riquelme", "joselyn@example.com", 200000],
+};
+
+const result = await client.query(SQLQuery);
+console.log(result.rows); // → [{ id: 3, first_name: 'Joselyn', ... }]
+```
+
+### Tipos de datos y $n
+
+`pg` convierte automáticamente entre tipos JavaScript y PostgreSQL:
+
+| JavaScript | PostgreSQL |
+|-----------|-----------|
+| `string` | `VARCHAR`, `TEXT`, `UUID` |
+| `number` | `INT`, `NUMERIC`, `FLOAT` |
+| `Date` | `TIMESTAMP`, `DATE` |
+| `boolean` | `BOOLEAN` |
+| `null` | `NULL` |
+| `object/array` | `JSON`, `JSONB` |
+
+## rowMode: "array"
+
+Por defecto, `pg` devuelve cada fila como un objeto `{ columna: valor }`. Con `rowMode: "array"`, devuelve arrays de valores:
+
+```javascript
+const query = {
+  rowMode: "array",
+  text:    "SELECT id, nombre, email FROM usuarios WHERE id = $1",
+  values:  [1],
+};
+
+const result = await client.query(query);
+
+// Con rowMode por defecto (objeto):
+// result.rows → [{ id: 1, nombre: 'Ana', email: 'ana@demo.com' }]
+
+// Con rowMode: "array":
+// result.rows → [[1, 'Ana', 'ana@demo.com']]
+// result.fields → [{ name: 'id' }, { name: 'nombre' }, { name: 'email' }]
+```
+
+<Callout type="tip">
+`rowMode: "array"` es útil cuando el volumen de datos es muy alto y quieres evitar el overhead de crear un objeto por cada fila. También lo usan internamente algunos ORMs y herramientas de ETL.
+</Callout>
+
+## INSERT con RETURNING *
+
+`RETURNING *` hace que PostgreSQL devuelva el registro después de insertarlo o actualizarlo — sin necesidad de hacer un segundo `SELECT`:
+
+```javascript
+// INSERT y obtener el registro creado en una sola operación
+const nuevaFila = async (nombre, email, saldo) => {
+  let client;
+  try {
+    client = await pool.connect();
+
+    const { rows } = await client.query(
+      "INSERT INTO usuarios (nombre, email, saldo) VALUES ($1, $2, $3) RETURNING *",
+      [nombre, email, saldo]
+    );
+
+    return rows[0]; // El registro recién insertado con su id asignado
+  } finally {
+    if (client) client.release();
+  }
+};
+
+const usuario = await nuevaFila("Pedro López", "pedro@demo.com", 150000);
+console.log(usuario); // { id: 4, nombre: 'Pedro López', email: 'pedro@demo.com', saldo: 150000 }
+```
+
+## Resumen del flujo
+
+```
+.env
+  └─ DB_USER, DB_HOST, DB_DATABASE, DB_PASSWORD, DB_PORT
+
+pool = new Pool({ ...config })
+  ├─ pool.query(sql, [params])          ← consultas simples
+  └─ pool.connect() → client
+        ├─ client.query(sql, [params])  ← transacciones o múltiples queries
+        └─ client.release()             ← SIEMPRE en finally
+```

@@ -1,0 +1,221 @@
+---
+titulo: "Rutas y Respuestas Estándar"
+descripcion: "Aprende a organizar rutas, definir una ruta genérica 404 y establecer un contrato de respuesta consistente en tu API."
+tipo: practica
+duracion: "1h"
+objetivos:
+  - "Organizar rutas con express.Router()"
+  - "Implementar una ruta genérica 404 con app.use()"
+  - "Definir un contrato de respuesta JSON consistente"
+  - "Retornar los códigos HTTP adecuados en cada situación"
+recursos:
+  - nombre: "Express — Guía de routing"
+    url: "https://expressjs.com/es/guide/routing.html"
+  - nombre: "HTTP Status Codes — MDN"
+    url: "https://developer.mozilla.org/es/docs/Web/HTTP/Status"
+---
+
+# Rutas y Respuestas Estándar
+
+Una API bien diseñada comunica claramente su estado a través de los **códigos HTTP** y mantiene un **contrato de respuesta consistente** que los clientes pueden anticipar.
+
+## Códigos HTTP más importantes
+
+| Código | Nombre | Cuándo usarlo |
+|--------|--------|---------------|
+| `200` | OK | GET exitoso |
+| `201` | Created | POST que crea un recurso |
+| `204` | No Content | DELETE exitoso (sin body) |
+| `400` | Bad Request | Datos de entrada inválidos |
+| `401` | Unauthorized | No autenticado |
+| `403` | Forbidden | Autenticado pero sin permisos |
+| `404` | Not Found | Recurso no existe |
+| `409` | Conflict | Duplicado (ej: email ya existe) |
+| `500` | Internal Server Error | Error inesperado del servidor |
+
+## Contrato de respuesta consistente
+
+Define un formato fijo para todas tus respuestas:
+
+```javascript
+// utils/respuesta.js
+
+// Respuesta de éxito
+export function ok(res, datos, status = 200) {
+  return res.status(status).json({
+    ok: true,
+    datos,
+  });
+}
+
+// Respuesta de error
+export function error(res, mensaje, status = 400) {
+  return res.status(status).json({
+    ok: false,
+    error: mensaje,
+  });
+}
+
+// Recurso no encontrado
+export function notFound(res, recurso = "Recurso") {
+  return res.status(404).json({
+    ok: false,
+    error: `${recurso} no encontrado`,
+  });
+}
+```
+
+## Uso en rutas
+
+```javascript
+import express from "express";
+import { ok, error, notFound } from "./utils/respuesta.js";
+
+const app = express();
+app.use(express.json());
+
+const productos = [
+  { id: 1, nombre: "Laptop", precio: 999 },
+  { id: 2, nombre: "Mouse", precio: 29 },
+];
+
+// ✅ GET todos → 200 + array
+app.get("/api/productos", (req, res) => {
+  ok(res, productos);
+});
+
+// ✅ GET por ID → 200 o 404
+app.get("/api/productos/:id", (req, res) => {
+  const producto = productos.find((p) => p.id === Number(req.params.id));
+  if (!producto) return notFound(res, "Producto");
+  ok(res, producto);
+});
+
+// ✅ POST crear → 201 o 400
+app.post("/api/productos", (req, res) => {
+  const { nombre, precio } = req.body;
+
+  if (!nombre || precio === undefined) {
+    return error(res, "Los campos nombre y precio son requeridos");
+  }
+  if (typeof precio !== "number" || precio < 0) {
+    return error(res, "El precio debe ser un número positivo");
+  }
+
+  const nuevo = { id: Date.now(), nombre, precio };
+  productos.push(nuevo);
+  ok(res, nuevo, 201);
+});
+
+// ✅ PUT actualizar → 200 o 404
+app.put("/api/productos/:id", (req, res) => {
+  const idx = productos.findIndex((p) => p.id === Number(req.params.id));
+  if (idx === -1) return notFound(res, "Producto");
+
+  productos[idx] = { ...productos[idx], ...req.body };
+  ok(res, productos[idx]);
+});
+
+// ✅ DELETE → 204 o 404
+app.delete("/api/productos/:id", (req, res) => {
+  const idx = productos.findIndex((p) => p.id === Number(req.params.id));
+  if (idx === -1) return notFound(res, "Producto");
+
+  productos.splice(idx, 1);
+  res.status(204).send(); // 204 = sin cuerpo de respuesta
+});
+```
+
+## Ruta genérica 404
+
+La ruta 404 **siempre va al final**, después de todas las demás rutas. Es un `app.use()` sin path:
+
+```javascript
+// ❌ Mal — antes de las rutas, nunca llegamos a ellas
+app.use((req, res) => {
+  res.status(404).json({ error: "No encontrado" });
+});
+
+app.get("/usuarios", ...);  // Esta ruta nunca se alcanza
+
+
+// ✅ Bien — al final de todo
+app.get("/api/productos", ...);
+app.post("/api/productos", ...);
+// ... todas las rutas ...
+
+// Ruta genérica 404 — siempre la última
+app.use((req, res) => {
+  res.status(404).json({
+    ok: false,
+    error: `La ruta ${req.method} ${req.url} no existe en esta API`,
+  });
+});
+```
+
+## Organizar rutas con Router
+
+Cuando tu app crece, usa `express.Router()` para separar rutas en archivos:
+
+```javascript
+// routes/productos.js
+import { Router } from "express";
+import { ok, error, notFound } from "../utils/respuesta.js";
+
+const router = Router();
+const productos = [];
+
+router.get("/", (req, res) => ok(res, productos));
+router.get("/:id", (req, res) => {
+  const p = productos.find((p) => p.id === Number(req.params.id));
+  if (!p) return notFound(res, "Producto");
+  ok(res, p);
+});
+router.post("/", (req, res) => {
+  /* ... */
+});
+
+export default router;
+```
+
+```javascript
+// server.js
+import express from "express";
+import productosRouter from "./routes/productos.js";
+import usuariosRouter from "./routes/usuarios.js";
+
+const app = express();
+app.use(express.json());
+
+// Montar routers con prefijo
+app.use("/api/productos", productosRouter);
+app.use("/api/usuarios", usuariosRouter);
+
+// 404 genérico
+app.use((req, res) => {
+  res.status(404).json({ ok: false, error: `Ruta no encontrada: ${req.url}` });
+});
+
+app.listen(3000);
+```
+
+<Callout type="tip">
+Con esta estructura, el archivo `server.js` queda limpio. Cada recurso (productos, usuarios, pedidos) tiene su propio archivo de rutas en la carpeta `routes/`.
+</Callout>
+
+## Estructura de proyecto recomendada
+
+```
+mi-api/
+├── server.js              ← Punto de entrada
+├── package.json
+├── .env
+├── routes/
+│   ├── productos.js
+│   └── usuarios.js
+├── middlewares/
+│   ├── logger.js
+│   └── auth.js
+└── utils/
+    └── respuesta.js
+```

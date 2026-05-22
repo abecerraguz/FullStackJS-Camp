@@ -1,0 +1,233 @@
+---
+titulo: "File Upload con Express"
+tipo: practica
+duracion: 6h
+objetivos:
+  - Integrar express-fileupload como middleware para recibir archivos multipart/form-data
+  - Validar extensión y tamaño antes de guardar el archivo en disco
+  - Generar nombres únicos con timestamp + sufijo aleatorio para evitar colisiones
+  - Servir los archivos subidos como contenido estático y permitir listar y eliminar
+recursos:
+  - { nombre: "express-fileupload en npm", url: "https://www.npmjs.com/package/express-fileupload" }
+  - { nombre: "Node.js fs — documentación oficial", url: "https://nodejs.org/api/fs.html" }
+  - { nombre: "MDN — FormData", url: "https://developer.mozilla.org/es/docs/Web/API/FormData" }
+---
+
+# File Upload con Express
+
+`express-fileupload` es un middleware que parsea peticiones `multipart/form-data` y expone los archivos recibidos en `req.files`. A diferencia de Multer, guarda el archivo **en memoria** primero y luego tú decides cómo persistirlo con `.mv()`.
+
+## Instalación
+
+```bash
+npm install express express-fileupload dotenv
+```
+
+## Configurar el middleware
+
+```javascript
+// models/Server.js (fragmento)
+import fileUpload from 'express-fileupload';
+
+middlewares() {
+  this.app.use(express.json());
+
+  this.app.use(fileUpload({
+    limits: { fileSize: 5_000_000 }, // 5 MB en bytes
+    abortOnLimit: true,
+    responseOnLimit: 'El archivo supera el límite de 5 MB'
+  }));
+
+  // Servir archivos subidos como estáticos
+  const uploadsDir = path.join(__dirname, '../uploads');
+  this.app.use('/uploads', express.static(uploadsDir));
+}
+```
+
+<Callout type="tip">
+`abortOnLimit: true` hace que `express-fileupload` rechace automáticamente archivos que superen `limits.fileSize` antes de que lleguen al controlador, sin necesidad de validarlo manualmente.
+</Callout>
+
+## Estructura de carpetas
+
+```
+models/
+  Server.js
+controllers/
+  uploads.controller.js
+services/
+  uploads.service.js
+routes/
+  uploads.routes.js
+middlewares/
+  requestInfo.js
+  errorHandler.js
+  notFound.js
+utils/
+  ApiError.js
+  apiResponse.js
+uploads/              ← generada automáticamente si no existe
+public/
+  index.html          ← formulario HTML para probar la subida
+```
+
+## Servicio de uploads
+
+El servicio centraliza toda la lógica: validación de extensión, generación de nombre único y escritura en disco.
+
+```javascript
+// services/uploads.service.js
+import fs   from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { ApiError } from '../utils/ApiError.js';
+
+const __dirname   = path.dirname(fileURLToPath(import.meta.url));
+const uploadsDir  = path.join(path.dirname(__dirname), 'uploads');
+
+// Crear la carpeta si no existe
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+const ALLOWED_EXTENSIONS = ['.pdf', '.doc', '.txt', '.xls', '.xlsx',
+                             '.jpg', '.jpeg', '.png', '.gif'];
+
+export const uploadFileService = async (file) => {
+  if (!file) throw new ApiError(400, 'No se recibió ningún archivo');
+
+  const ext = path.extname(file.name).toLowerCase();
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    throw new ApiError(400, `Extensión no permitida. Permitidas: ${ALLOWED_EXTENSIONS.join(', ')}`);
+  }
+
+  // Nombre único: timestamp + sufijo aleatorio + nombre original
+  const timestamp    = Date.now();
+  const randomSuffix = Math.random().toString(36).slice(2, 9);
+  const storedName   = `${timestamp}-${randomSuffix}-${file.name}`;
+  const destPath     = path.join(uploadsDir, storedName);
+
+  await file.mv(destPath); // mueve el archivo desde memoria al disco
+
+  return {
+    id:           timestamp,
+    filename:     file.name,
+    storedName,
+    size:         file.size,
+    mimetype:     file.mimetype,
+    uploadedAt:   new Date().toISOString(),
+    url:          `/uploads/${storedName}`
+  };
+};
+
+export const listFilesService = () => {
+  const files = fs.readdirSync(uploadsDir);
+  return files.map(name => ({
+    name,
+    size: fs.statSync(path.join(uploadsDir, name)).size,
+    url:  `/uploads/${name}`
+  }));
+};
+
+export const deleteFileService = (filename) => {
+  const filePath = path.join(uploadsDir, filename);
+  if (!fs.existsSync(filePath)) {
+    throw new ApiError(404, `Archivo "${filename}" no encontrado`);
+  }
+  fs.unlinkSync(filePath);
+  return { deleted: filename };
+};
+```
+
+<Callout type="warning">
+**Seguridad — path traversal**: nunca uses `filename` del cliente directamente en rutas del sistema. Siempre usa `path.basename()` para extraer solo el nombre de archivo antes de concatenar con la ruta del servidor:
+
+`const safe = path.basename(req.params.filename);`
+</Callout>
+
+## Controlador
+
+```javascript
+// controllers/uploads.controller.js
+import path             from 'path';
+import { uploadFileService, listFilesService, deleteFileService } from '../services/uploads.service.js';
+import { sendResponse } from '../utils/apiResponse.js';
+import { ApiError }     from '../utils/ApiError.js';
+
+export const uploadFileController = async (req, res, next) => {
+  try {
+    if (!req.files || Object.keys(req.files).length === 0) {
+      throw new ApiError(400, 'No se envió ningún archivo');
+    }
+    const file   = req.files.file; // campo "file" del formulario
+    const result = await uploadFileService(file);
+    sendResponse(res, 201, result, 'Archivo subido correctamente');
+  } catch (e) { next(e); }
+};
+
+export const listFilesController = async (req, res, next) => {
+  try {
+    const files = listFilesService();
+    sendResponse(res, 200, files, 'Archivos listados correctamente');
+  } catch (e) { next(e); }
+};
+
+export const deleteFileController = async (req, res, next) => {
+  try {
+    const filename = path.basename(req.params.filename); // sanitización
+    const result   = await deleteFileService(filename);
+    sendResponse(res, 200, result, 'Archivo eliminado correctamente');
+  } catch (e) { next(e); }
+};
+```
+
+## Router
+
+```javascript
+// routes/uploads.routes.js
+import { Router } from 'express';
+import { uploadFileController, listFilesController, deleteFileController } from '../controllers/uploads.controller.js';
+
+const router = Router();
+
+router.post('/',             uploadFileController);  // sube un archivo
+router.get('/',              listFilesController);   // lista los archivos
+router.delete('/:filename',  deleteFileController);  // elimina un archivo
+
+export default router;
+```
+
+## Montaje en Server
+
+```javascript
+// models/Server.js (routes)
+routes() {
+  this.app.use('/api/v1/uploads', uploadsRoutes);
+  this.app.use(notFoundMiddleware);
+  this.app.use(errorHandlerMiddleware);
+}
+```
+
+## Formulario HTML de prueba
+
+```html
+<!-- public/index.html -->
+<form action="/api/v1/uploads" method="POST" enctype="multipart/form-data">
+  <input type="file" name="file" />
+  <button type="submit">Subir archivo</button>
+</form>
+```
+
+<Callout type="tip">
+El atributo `name="file"` del input debe coincidir con `req.files.file` en el controlador. Si usas otro nombre (p. ej. `name="imagen"`), cambia el código a `req.files.imagen`.
+</Callout>
+
+## Endpoints
+
+| Método | URL | Descripción |
+|--------|-----|-------------|
+| `POST` | `/api/v1/uploads` | Sube un archivo (campo `file`) |
+| `GET` | `/api/v1/uploads` | Lista todos los archivos subidos |
+| `DELETE` | `/api/v1/uploads/:filename` | Elimina un archivo por nombre |
+
+Los archivos subidos quedan disponibles en `GET /uploads/:storedName`.

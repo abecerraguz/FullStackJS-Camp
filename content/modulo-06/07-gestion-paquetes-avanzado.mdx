@@ -1,0 +1,296 @@
+---
+titulo: "Gestión Avanzada de Paquetes NPM"
+descripcion: "Construye herramientas CLI con Node.js: módulos CommonJS vs ESM, colores con chalk, argumentos con process.argv, parsing avanzado con yargs y formularios interactivos con inquirer."
+tipo: practica
+duracion: "2h"
+objetivos:
+  - "Comparar CommonJS y ESModules y elegir el sistema correcto"
+  - "Usar chalk para dar color y formato a la salida de la consola"
+  - "Leer y validar argumentos de la línea de comandos con process.argv"
+  - "Parsear argumentos y subcomandos complejos con yargs"
+  - "Crear CLIs interactivos con formularios usando inquirer"
+recursos:
+  - nombre: "yargs — Documentación"
+    url: "https://yargs.js.org/"
+  - nombre: "inquirer — Documentación"
+    url: "https://github.com/SBoudrias/Inquirer.js"
+  - nombre: "chalk — npm"
+    url: "https://github.com/chalk/chalk"
+---
+
+# Gestión Avanzada de Paquetes NPM
+
+Más allá de instalar dependencias, NPM es la puerta de entrada para construir **herramientas CLI** (Command Line Interface) profesionales con JavaScript. En esta sección seguiremos una progresión natural:
+
+```
+CommonJS/ESM → chalk → process.argv → yargs → inquirer
+(base)          (salida)   (entrada básica)  (avanzada)  (interactivo)
+```
+
+## 1. CommonJS vs ESModules
+
+Antes de instalar cualquier paquete, debes saber qué sistema de módulos usa tu proyecto, porque afecta cómo importas las dependencias:
+
+```javascript
+// ── CommonJS (legacy) ──────────────────────────────────────
+// Carga síncrona. No requiere config extra en package.json.
+
+const path = require("path");
+const { readFile } = require("fs");
+
+function saludar(nombre) {
+  return `Hola, ${nombre}`;
+}
+
+module.exports = { saludar };         // Exportar objeto
+module.exports.saludar = saludar;     // Alternativa
+
+// ── ESModules (moderno) ─────────────────────────────────────
+// Requiere "type": "module" en package.json (o extensión .mjs)
+
+import path from "path";
+import { readFile } from "fs";
+
+export function saludar(nombre) {     // Export nombrado
+  return `Hola, ${nombre}`;
+}
+
+export default saludar;               // Export por defecto
+```
+
+| | CommonJS | ESModules |
+|---|---|---|
+| Sintaxis | `require` / `module.exports` | `import` / `export` |
+| Carga | Síncrona | Asíncrona (estática) |
+| `__dirname` | Disponible | Requiere workaround |
+| Soporte browser | No | Sí |
+| Recomendado | Proyectos legacy | Proyectos nuevos |
+
+<Callout type="tip">
+Agrega `"type": "module"` en tu `package.json` para usar ESModules en todos tus archivos `.js`. Sin esa línea, Node.js asume CommonJS.
+</Callout>
+
+### Importación dinámica
+
+```javascript
+// Útil cuando el módulo a cargar se decide en tiempo de ejecución
+const modulo = await import("./plugin.js");
+
+// Cargar JSON en ESModules
+const pkg = JSON.parse(
+  await fs.readFile(new URL("./package.json", import.meta.url), "utf-8")
+);
+```
+
+## 2. chalk — Colores en la consola
+
+El primer paquete que instalarás en casi cualquier CLI es `chalk`: da color y formato a los mensajes de la terminal.
+
+```bash
+npm install chalk
+```
+
+```javascript
+import chalk from "chalk";
+
+// Colores básicos
+console.log(chalk.red("Error: archivo no encontrado"));
+console.log(chalk.green("✓ Operación exitosa"));
+console.log(chalk.yellow("⚠ Advertencia: espacio en disco bajo"));
+console.log(chalk.blue("ℹ Información del sistema"));
+console.log(chalk.cyan("→ Procesando..."));
+
+// Estilos de texto
+console.log(chalk.bold("Texto en negrita"));
+console.log(chalk.italic("Texto en cursiva"));
+console.log(chalk.underline("Texto subrayado"));
+
+// Combinaciones
+console.log(chalk.bold.red("ERROR CRÍTICO"));
+console.log(chalk.bgGreen.black(" OK "));
+console.log(chalk.hex("#c5ff00").bold("Color hexadecimal"));
+
+// Template literals
+const usuario = "Ana";
+console.log(chalk`Hola {cyan.bold ${usuario}}, bienvenida`);
+```
+
+<Callout type="tip">
+chalk detecta automáticamente si el terminal soporta colores. En entornos CI/CD sin soporte de color, los desactiva solo — no necesitas hacer nada especial.
+</Callout>
+
+## 3. process.argv — Argumentos básicos
+
+`process.argv` es la forma nativa de recibir argumentos desde la línea de comandos, sin instalar nada:
+
+```bash
+node script.js add "María" 28 --activo
+```
+
+```javascript
+// process.argv en ese caso:
+// ['node', '/ruta/script.js', 'add', 'María', '28', '--activo']
+
+const args = process.argv.slice(2); // Elimina 'node' y la ruta
+console.log(args); // ['add', 'María', '28', '--activo']
+
+const [comando, nombre, edad] = args;
+console.log(comando); // 'add'
+console.log(nombre);  // 'María'
+console.log(edad);    // '28' (siempre string, nunca número)
+```
+
+### Ejemplo: calculadora CLI
+
+```javascript
+// calc.js
+import chalk from "chalk";
+
+const [, , operacion, a, b] = process.argv;
+
+if (!operacion || !a || !b) {
+  console.error(chalk.red("Uso: node calc.js <operacion> <a> <b>"));
+  console.error(chalk.gray("Operaciones: suma, resta, mult, div"));
+  process.exit(1);
+}
+
+const numA = Number(a);
+const numB = Number(b);
+
+if (isNaN(numA) || isNaN(numB)) {
+  console.error(chalk.red("Error: a y b deben ser números"));
+  process.exit(1);
+}
+
+const operaciones = {
+  suma:  numA + numB,
+  resta: numA - numB,
+  mult:  numA * numB,
+  div:   numB !== 0 ? numA / numB : null,
+};
+
+if (!(operacion in operaciones)) {
+  console.error(chalk.red(`Operación desconocida: ${operacion}`));
+  process.exit(1);
+}
+
+if (operaciones[operacion] === null) {
+  console.error(chalk.red("Error: división por cero"));
+  process.exit(1);
+}
+
+console.log(chalk.green(`${numA} ${operacion} ${numB} = ${operaciones[operacion]}`));
+```
+
+```bash
+node calc.js suma 10 5    # 10 suma 5 = 15
+node calc.js div 20 4     # 20 div 4 = 5
+```
+
+`process.argv` funciona bien para scripts simples, pero cuando necesitas flags (`--verbose`), opciones con valor (`--output=file.json`) o subcomandos, el código se vuelve engorroso. Para eso existe yargs.
+
+## 4. yargs — Parsing avanzado de argumentos
+
+`yargs` convierte la línea de comandos en un objeto estructurado y genera ayuda automática:
+
+```bash
+npm install yargs
+```
+
+```javascript
+// cli-yargs.js
+import yargs from "yargs";
+import { hideBin } from "yargs/helpers";
+
+const argv = yargs(hideBin(process.argv))
+  .command("add <nombre> <edad>", "Agregar un usuario", (yargs) => {
+    yargs
+      .positional("nombre", { describe: "Nombre del usuario", type: "string" })
+      .positional("edad", { describe: "Edad", type: "number" });
+  })
+  .command("list", "Listar todos los usuarios")
+  .command("delete <id>", "Eliminar usuario por ID")
+  .option("verbose", {
+    alias: "v",
+    type: "boolean",
+    description: "Mostrar información detallada",
+  })
+  .demandCommand(1, "Debes especificar un comando")
+  .help()
+  .argv;
+
+if (argv._[0] === "add") {
+  console.log(`Agregando: ${argv.nombre}, ${argv.edad} años`);
+}
+if (argv._[0] === "list") {
+  console.log("Listando usuarios...");
+}
+```
+
+```bash
+node cli-yargs.js add "Ana García" 30
+node cli-yargs.js list --verbose
+node cli-yargs.js --help          # Genera la ayuda automáticamente
+```
+
+La ventaja sobre `process.argv` raw: yargs valida tipos, genera mensajes de error claros y produce la documentación `--help` sin escribir nada extra.
+
+## 5. inquirer — CLI interactivo
+
+Cuando el CLI necesita hacer preguntas al usuario (como un asistente), `@inquirer/prompts` crea formularios interactivos en la terminal:
+
+```bash
+npm install @inquirer/prompts
+```
+
+```javascript
+// cli-interactivo.js
+import { input, select, confirm } from "@inquirer/prompts";
+import chalk from "chalk";
+
+async function main() {
+  console.log(chalk.bold.cyan("\n=== Registro de Usuario ===\n"));
+
+  const nombre = await input({
+    message: "¿Cuál es tu nombre?",
+    validate: (valor) =>
+      valor.trim().length >= 2 || "El nombre debe tener al menos 2 caracteres",
+  });
+
+  const edad = await input({
+    message: "¿Cuántos años tienes?",
+    validate: (valor) => {
+      const num = Number(valor);
+      return (!isNaN(num) && num > 0 && num < 120) || "Ingresa una edad válida";
+    },
+  });
+
+  const rol = await select({
+    message: "¿Cuál es tu rol?",
+    choices: [
+      { name: "Desarrollador Frontend", value: "frontend" },
+      { name: "Desarrollador Backend", value: "backend" },
+      { name: "Full Stack", value: "fullstack" },
+      { name: "DevOps", value: "devops" },
+    ],
+  });
+
+  const confirmar = await confirm({
+    message: `¿Confirmas el registro de ${nombre} como ${rol}?`,
+    default: true,
+  });
+
+  if (confirmar) {
+    console.log(chalk.green("\n✓ Usuario registrado exitosamente"));
+    console.log(chalk.gray(JSON.stringify({ nombre, edad: Number(edad), rol }, null, 2)));
+  } else {
+    console.log(chalk.yellow("\nRegistro cancelado"));
+  }
+}
+
+main();
+```
+
+<Callout type="tip">
+La combinación **yargs + inquirer** es muy poderosa: yargs maneja subcomandos cuando el usuario sabe qué quiere hacer (`node app.js add`), e inquirer toma el control cuando necesitas guiarle paso a paso.
+</Callout>

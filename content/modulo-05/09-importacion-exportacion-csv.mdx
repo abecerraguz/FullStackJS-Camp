@@ -1,0 +1,295 @@
+---
+titulo: "Importación, Exportación y Backup"
+descripcion: "Cargar datos desde CSV, respaldar bases de datos con mysqldump/pg_dump e importar dumps SQL."
+tipo: "practica"
+modulo: 5
+duracion: "4h"
+objetivos:
+  - "Importar datos masivos desde archivos CSV."
+  - "Exportar resultados de consultas a CSV."
+  - "Crear backups completos con mysqldump y pg_dump."
+  - "Restaurar una base de datos desde un archivo .sql."
+  - "Automatizar backups con scripts de terminal."
+conceptosClave:
+  - "CSV"
+  - "LOAD DATA INFILE"
+  - "\\copy"
+  - "mysqldump"
+  - "pg_dump"
+  - "Backup"
+  - "Restore"
+recursos:
+  - { nombre: "MySQL Docs — LOAD DATA", url: "https://dev.mysql.com/doc/refman/8.0/en/load-data.html" }
+  - { nombre: "pg_dump docs", url: "https://www.postgresql.org/docs/current/app-pgdump.html" }
+---
+
+# Importación, Exportación y Backup
+
+Manejar datos en volumen es una habilidad esencial: poblar BDs de prueba con CSV, generar respaldos antes de cambios de esquema y restaurar en caso de fallo.
+
+---
+
+## Importar datos desde CSV
+
+### MySQL — LOAD DATA INFILE
+
+`LOAD DATA INFILE` es la forma nativa de MySQL para cargar un CSV masivo directamente al servidor.
+
+#### Preparar la tabla primero
+
+```sql
+USE alke_wallet;
+
+CREATE TABLE IF NOT EXISTS pokemones (
+  pokedex  INT         NOT NULL,
+  nombre   VARCHAR(30) NOT NULL,
+  tipo1    VARCHAR(15) NOT NULL,
+  tipo2    VARCHAR(15) NULL,
+  PRIMARY KEY (pokedex)
+);
+```
+
+#### Importar el CSV
+
+```sql
+-- El archivo debe estar en un directorio permitido por MySQL
+-- (ver @@secure_file_priv)
+SHOW VARIABLES LIKE 'secure_file_priv';
+
+LOAD DATA INFILE '/var/lib/mysql-files/pokemonesKanto.csv'
+INTO TABLE pokemones
+FIELDS TERMINATED BY ','
+OPTIONALLY ENCLOSED BY '"'
+LINES TERMINATED BY '\n'
+IGNORE 1 ROWS;         -- Omite la fila de cabecera (header)
+
+SELECT COUNT(*) FROM pokemones;  -- verificar
+```
+
+#### Formato del CSV esperado
+
+```
+pokedex,nombre,tipo1,tipo2
+1,Bulbasaur,Planta,Veneno
+2,Ivysaur,Planta,Veneno
+3,Venusaur,Planta,Veneno
+4,Charmander,Fuego,
+```
+
+<Callout type="info">
+Si `@@secure_file_priv` retorna un path (ej: `/var/lib/mysql-files/`), el archivo CSV debe estar en ese directorio. Si retorna `NULL`, la importación está deshabilitada por seguridad.
+
+**Alternativa en DBeaver:** clic derecho sobre la tabla → **Import Data** → selecciona CSV — no requiere mover el archivo.
+</Callout>
+
+### MySQL — importar con DBeaver (sin terminal)
+
+1. Clic derecho sobre la tabla → **Import Data**
+2. Selecciona **CSV**
+3. Elige el archivo `.csv`
+4. Mapea columnas del CSV a columnas de la tabla
+5. Haz clic en **Proceed** → DBeaver inserta los datos con INSERTs automáticos
+
+---
+
+### PostgreSQL — \copy (psql)
+
+En PostgreSQL, `\copy` es el comando del cliente `psql` para importar/exportar CSV sin necesidad de permisos de superusuario:
+
+```sql
+-- En psql: conectarse primero a la BD
+\c pokemon
+
+-- Crear tablas
+CREATE TABLE pokemones (
+  pokedex  INT         PRIMARY KEY,
+  nombre   VARCHAR(30) NOT NULL,
+  tipo1    VARCHAR(15) NOT NULL,
+  tipo2    VARCHAR(15)
+);
+
+CREATE TABLE mis_pokemones (
+  pokedex        INT  REFERENCES pokemones(pokedex),
+  fecha_captura  DATE,
+  lugar          VARCHAR(30),
+  huevo          BOOLEAN,
+  peso           FLOAT,
+  estatura       FLOAT
+);
+
+-- Importar CSV con cabecera
+\copy pokemones FROM '/ruta/pokemonesKanto.csv' CSV HEADER;
+\copy mis_pokemones FROM '/ruta/mis_pokemones.csv' CSV HEADER;
+
+-- Verificar
+SELECT COUNT(*) FROM pokemones;
+```
+
+<Callout type="tip">
+La diferencia entre `COPY` y `\copy` en PostgreSQL:
+- `COPY` — ejecuta en el servidor (requiere SUPERUSER, el path es relativo al servidor)
+- `\copy` — ejecuta en el cliente psql (funciona con cualquier usuario, el path es local)
+
+Para desarrollo local usa siempre `\copy`.
+</Callout>
+
+---
+
+## Exportar resultados a CSV
+
+### MySQL — SELECT INTO OUTFILE
+
+```sql
+-- Exportar resultado de una consulta a CSV
+SELECT user_id, nombre, correo, saldo
+FROM usuarios
+INTO OUTFILE '/var/lib/mysql-files/usuarios_export.csv'
+FIELDS TERMINATED BY ','
+OPTIONALLY ENCLOSED BY '"'
+LINES TERMINATED BY '\n';
+```
+
+### MySQL/PostgreSQL — desde DBeaver
+
+1. Ejecuta la consulta SELECT
+2. En el Data Grid, clic derecho → **Export Data**
+3. Elige **CSV**
+4. Configura separador, encoding (UTF-8) y nombre de archivo
+5. Haz clic en **Proceed**
+
+### PostgreSQL — \copy para exportar
+
+```sql
+-- Exportar tabla completa a CSV con cabecera
+\copy usuarios TO '/ruta/usuarios_export.csv' CSV HEADER;
+
+-- Exportar el resultado de un SELECT
+\copy (
+  SELECT u.nombre, SUM(t.valor) AS total
+  FROM transacciones t
+  JOIN usuarios u ON u.user_id = t.sender_user_id
+  GROUP BY u.nombre
+) TO '/ruta/reporte_envios.csv' CSV HEADER;
+```
+
+---
+
+## Backup — Respaldar la base de datos
+
+### MySQL — mysqldump
+
+`mysqldump` genera un archivo `.sql` con todas las sentencias necesarias para recrear la BD:
+
+```bash
+# Respaldar una base de datos completa
+mysqldump -u root -p alke_wallet > respaldo_alke_wallet.sql
+
+# Con fecha en el nombre del archivo (útil para backups automáticos)
+mysqldump -u root -p alke_wallet > "respaldo_$(date +%Y%m%d).sql"
+
+# Solo la estructura (sin datos)
+mysqldump -u root -p --no-data alke_wallet > estructura_alke_wallet.sql
+
+# Solo los datos (sin estructura)
+mysqldump -u root -p --no-create-info alke_wallet > datos_alke_wallet.sql
+
+# Múltiples bases de datos
+mysqldump -u root -p --databases alke_wallet otra_bd > respaldo_multi.sql
+
+# Todas las bases de datos
+mysqldump -u root -p --all-databases > respaldo_completo.sql
+```
+
+### PostgreSQL — pg_dump
+
+```bash
+# Respaldar una base de datos
+pg_dump -U abecerraguz -d alke_wallet -f respaldo_alke_wallet.sql
+
+# Con formato comprimido (más eficiente para BDs grandes)
+pg_dump -U abecerraguz -d alke_wallet -Fc -f respaldo_alke_wallet.dump
+
+# Solo estructura
+pg_dump -U abecerraguz -d alke_wallet --schema-only -f estructura.sql
+
+# Solo datos
+pg_dump -U abecerraguz -d alke_wallet --data-only -f datos.sql
+```
+
+---
+
+## Restore — Restaurar desde backup
+
+### MySQL
+
+```bash
+# Opción 1: redirigir el archivo al cliente mysql
+mysql -u root -p alke_wallet < respaldo_alke_wallet.sql
+
+# Si la BD no existe todavía, créala primero:
+mysql -u root -p -e "CREATE DATABASE alke_wallet CHARACTER SET utf8mb4;"
+mysql -u root -p alke_wallet < respaldo_alke_wallet.sql
+```
+
+### PostgreSQL
+
+```bash
+# Restaurar desde archivo .sql (formato texto)
+psql -U abecerraguz -d alke_wallet -f respaldo_alke_wallet.sql
+
+# Restaurar desde formato comprimido (.dump)
+pg_restore -U abecerraguz -d alke_wallet respaldo_alke_wallet.dump
+
+# Si la BD no existe:
+createdb -U abecerraguz alke_wallet
+psql -U abecerraguz -d alke_wallet -f respaldo_alke_wallet.sql
+```
+
+---
+
+## Flujo completo de práctica
+
+```bash
+# 1. Crear la BD con el script del módulo
+mysql -u root -p < 00_setup_bd.sql
+
+# 2. Verificar contenido
+mysql -u root -p alke_wallet -e "SELECT COUNT(*) FROM usuarios;"
+
+# 3. Hacer backup antes de cambios destructivos
+mysqldump -u root -p alke_wallet > respaldo_antes_cambios.sql
+
+# 4. Ejecutar los cambios (DDL, migraciones, etc.)
+# ...
+
+# 5. Si algo salió mal: restaurar
+mysql -u root -p -e "DROP DATABASE alke_wallet; CREATE DATABASE alke_wallet;"
+mysql -u root -p alke_wallet < respaldo_antes_cambios.sql
+```
+
+<Callout type="warning">
+Antes de cualquier `ALTER TABLE`, `DROP TABLE`, `UPDATE masivo` o `DELETE masivo` en producción: **haz un backup**. Es la práctica más importante de administración de bases de datos.
+</Callout>
+
+---
+
+## Importar la BD de ejemplo World (PostgreSQL)
+
+La BD `world` es un dataset clásico de práctica con países, ciudades e idiomas:
+
+```bash
+# Descargar el archivo world.sql (buscar "world sql postgresql" en Google)
+# Crear la BD
+createdb -U postgres world
+
+# Importar
+psql -U postgres -d world -f world.sql
+
+# Conectarse y explorar
+psql -U postgres -d world
+\dt                          -- ver tablas
+SELECT * FROM country LIMIT 5;
+SELECT * FROM country
+  INNER JOIN city ON (countrycode = code)
+  WHERE region = 'South America';
+```

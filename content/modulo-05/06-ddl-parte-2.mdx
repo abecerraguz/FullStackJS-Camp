@@ -1,0 +1,302 @@
+---
+titulo: "Definición de Tablas DDL (Parte II)"
+descripcion: "ALTER TABLE, DROP TABLE, TRUNCATE, índices, integridad referencial con CASCADE y buenas prácticas de esquema."
+tipo: "practica"
+modulo: 5
+duracion: "4h"
+objetivos:
+  - "Modificar tablas existentes con ALTER TABLE."
+  - "Agregar y eliminar columnas y constraints."
+  - "Distinguir DROP TABLE de TRUNCATE TABLE."
+  - "Crear índices para mejorar el rendimiento de consultas."
+  - "Configurar integridad referencial: ON DELETE y ON UPDATE CASCADE."
+conceptosClave:
+  - "ALTER TABLE"
+  - "ADD COLUMN / DROP COLUMN / MODIFY COLUMN"
+  - "DROP TABLE"
+  - "TRUNCATE TABLE"
+  - "INDEX"
+  - "ON DELETE CASCADE"
+  - "ON UPDATE CASCADE"
+recursos:
+  - { nombre: "MySQL Docs — ALTER TABLE", url: "https://dev.mysql.com/doc/refman/8.0/en/alter-table.html" }
+  - { nombre: "MySQL Docs — Optimizing with Indexes", url: "https://dev.mysql.com/doc/refman/8.0/en/optimization-indexes.html" }
+---
+
+# Definición de Tablas DDL (Parte II)
+
+En esta segunda parte de DDL cubrimos cómo **modificar esquemas existentes** (algo que ocurre constantemente en proyectos reales), gestionar índices y configurar el comportamiento de las claves foráneas.
+
+---
+
+## ALTER TABLE — Modificar tablas
+
+`ALTER TABLE` permite cambiar la estructura de una tabla sin recrearla (y sin perder los datos existentes).
+
+### Agregar columna
+
+```sql
+-- Agregar una columna al final
+ALTER TABLE usuarios
+  ADD COLUMN telefono VARCHAR(20) NULL;
+
+-- Agregar en una posición específica
+ALTER TABLE usuarios
+  ADD COLUMN activo TINYINT(1) NOT NULL DEFAULT 1 AFTER correo;
+
+-- Agregar al inicio
+ALTER TABLE usuarios
+  ADD COLUMN uuid CHAR(36) NULL FIRST;
+```
+
+### Eliminar columna
+
+```sql
+-- Primero verificar: ¿qué contiene esa columna?
+SELECT telefono FROM usuarios LIMIT 5;
+
+-- Eliminar
+ALTER TABLE usuarios DROP COLUMN telefono;
+```
+
+<Callout type="warning">
+`DROP COLUMN` es permanente. Los datos de esa columna se pierden. Haz un backup o exporta los datos antes de ejecutarlo en producción.
+</Callout>
+
+### Modificar columna
+
+```sql
+-- Cambiar el tipo o las restricciones de una columna
+ALTER TABLE usuarios
+  MODIFY COLUMN nombre VARCHAR(120) NOT NULL;  -- ampliar de 80 a 120
+
+-- Renombrar columna (MySQL 8.0+)
+ALTER TABLE usuarios
+  RENAME COLUMN contrasena TO password_hash;
+
+-- Cambiar tipo Y nombre en un solo paso (CHANGE)
+ALTER TABLE usuarios
+  CHANGE contrasena password_hash VARCHAR(255) NOT NULL;
+```
+
+### Agregar constraint
+
+```sql
+-- Agregar UNIQUE
+ALTER TABLE usuarios
+  ADD CONSTRAINT uq_telefono UNIQUE (telefono);
+
+-- Agregar INDEX
+ALTER TABLE transacciones
+  ADD INDEX idx_fecha (transaction_date);
+
+-- Agregar FOREIGN KEY
+ALTER TABLE transacciones
+  ADD CONSTRAINT fk_currency
+    FOREIGN KEY (currency_id) REFERENCES monedas(currency_id)
+    ON DELETE RESTRICT
+    ON UPDATE CASCADE;
+```
+
+### Eliminar constraint
+
+```sql
+-- Eliminar FOREIGN KEY (primero hay que saber su nombre)
+SHOW CREATE TABLE transacciones;  -- busca el nombre del CONSTRAINT
+
+ALTER TABLE transacciones
+  DROP FOREIGN KEY fk_trans_sender;
+
+-- Eliminar UNIQUE o INDEX
+ALTER TABLE usuarios
+  DROP INDEX uq_telefono;
+
+-- Eliminar PRIMARY KEY (cuidado: solo si no tiene FK que la referencien)
+ALTER TABLE tabla_temp
+  DROP PRIMARY KEY;
+```
+
+### Múltiples cambios en una sola sentencia
+
+```sql
+-- Más eficiente que varios ALTER TABLE separados
+ALTER TABLE usuarios
+  ADD COLUMN telefono    VARCHAR(20)   NULL,
+  ADD COLUMN updated_at  DATETIME      NULL DEFAULT CURRENT_TIMESTAMP
+                                       ON UPDATE CURRENT_TIMESTAMP,
+  MODIFY COLUMN nombre   VARCHAR(120)  NOT NULL,
+  ADD INDEX idx_nombre   (nombre);
+```
+
+---
+
+## RENAME TABLE
+
+```sql
+-- Renombrar una tabla
+RENAME TABLE usuarios TO users;
+
+-- Renombrar múltiples tablas en una operación atómica
+RENAME TABLE
+  usuarios     TO users,
+  transacciones TO transactions;
+```
+
+---
+
+## DROP TABLE — Eliminar tablas
+
+```sql
+-- Eliminar una tabla (estructura + todos los datos)
+DROP TABLE IF EXISTS tabla_temp;
+
+-- Eliminar múltiples tablas
+DROP TABLE IF EXISTS tabla_a, tabla_b;
+```
+
+<Callout type="warning">
+`DROP TABLE` es **irreversible** en MySQL (a menos que tengas backups). No puedes hacer ROLLBACK de un DROP TABLE — es DDL, no DML.
+
+Orden importa: debes eliminar primero las tablas con FK antes de las tablas referenciadas, o bien desactivar temporalmente la verificación:
+
+```sql
+SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE transacciones;
+DROP TABLE usuarios;
+SET FOREIGN_KEY_CHECKS = 1;
+```
+</Callout>
+
+---
+
+## TRUNCATE TABLE — Vaciar tablas
+
+```sql
+-- Elimina TODAS las filas y resetea AUTO_INCREMENT
+TRUNCATE TABLE transacciones;
+```
+
+### DROP TABLE vs TRUNCATE TABLE vs DELETE
+
+| | `DROP TABLE` | `TRUNCATE TABLE` | `DELETE FROM` |
+|---|---|---|---|
+| Elimina estructura | ✅ | ❌ | ❌ |
+| Elimina datos | ✅ | ✅ (todas) | ✅ (con WHERE) |
+| Resetea AUTO_INCREMENT | ✅ | ✅ | ❌ |
+| Puede hacer ROLLBACK | ❌ | ❌ en MySQL | ✅ |
+| Respeta FK | ❌ (con checks off) | ❌ | ✅ |
+| Velocidad | Muy rápido | Muy rápido | Lento en tablas grandes |
+
+---
+
+## Índices (INDEX)
+
+Los índices aceleran las consultas `SELECT` al crear una estructura auxiliar que MySQL puede recorrer más rápido (similar al índice de un libro).
+
+### Cuándo crear un índice
+
+```sql
+-- Columnas frecuentes en WHERE
+ALTER TABLE transacciones
+  ADD INDEX idx_sender (sender_user_id);
+
+-- Columnas frecuentes en JOIN
+ALTER TABLE transacciones
+  ADD INDEX idx_receiver (receiver_user_id);
+
+-- Columnas frecuentes en ORDER BY o GROUP BY
+ALTER TABLE transacciones
+  ADD INDEX idx_fecha (transaction_date);
+
+-- Índice compuesto (útil para WHERE con múltiples condiciones)
+ALTER TABLE transacciones
+  ADD INDEX idx_sender_fecha (sender_user_id, transaction_date);
+```
+
+<Callout type="info">
+Las columnas `PRIMARY KEY`, `UNIQUE KEY` y `FOREIGN KEY` crean índices automáticamente. No necesitas crearlos manualmente para esas columnas.
+</Callout>
+
+### Ver índices existentes
+
+```sql
+SHOW INDEX FROM transacciones;
+```
+
+### Eliminar índice
+
+```sql
+ALTER TABLE transacciones
+  DROP INDEX idx_fecha;
+```
+
+### Cuándo NO crear índices
+
+- Tablas muy pequeñas (menos de unos pocos miles de filas) — el overhead supera el beneficio
+- Columnas que se actualizan muy frecuentemente — el índice debe actualizarse en cada UPDATE/INSERT
+- Columnas con muy poca variedad de valores (ej: `activo TINYINT(1)`) — poco beneficio
+
+---
+
+## Integridad referencial: ON DELETE y ON UPDATE
+
+Al definir una FOREIGN KEY puedes especificar qué pasa cuando se borra o modifica la fila referenciada:
+
+| Acción | Comportamiento |
+|--------|---------------|
+| `RESTRICT` (por defecto) | Impide el DELETE/UPDATE si hay filas hijas |
+| `CASCADE` | Propaga el DELETE/UPDATE a las filas hijas automáticamente |
+| `SET NULL` | Pone NULL en la FK de las filas hijas |
+| `NO ACTION` | Similar a RESTRICT en MySQL |
+
+```sql
+-- CASCADE: si se borra un usuario, se borran sus transacciones automáticamente
+CREATE TABLE transacciones (
+  transaction_id   INT           AUTO_INCREMENT,
+  sender_user_id   INT           NOT NULL,
+  receiver_user_id INT           NOT NULL,
+  valor            DECIMAL(12,2) NOT NULL,
+  transaction_date DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (transaction_id),
+
+  CONSTRAINT fk_trans_sender
+    FOREIGN KEY (sender_user_id)
+    REFERENCES usuarios(user_id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE,
+
+  CONSTRAINT fk_trans_receiver
+    FOREIGN KEY (receiver_user_id)
+    REFERENCES usuarios(user_id)
+    ON DELETE CASCADE
+    ON UPDATE CASCADE
+);
+```
+
+<Callout type="warning">
+`ON DELETE CASCADE` puede ser peligroso: un `DELETE` en `usuarios` puede eliminar cientos de transacciones de forma silenciosa. En sistemas financieros suele preferirse `RESTRICT` o `SET NULL` para conservar el historial.
+</Callout>
+
+---
+
+## Buenas prácticas de esquema
+
+```sql
+-- ✅ 1. Nombres consistentes: snake_case, singular o plural consistente
+CREATE TABLE user_accounts (...);  -- o usuarios, no mezclar
+
+-- ✅ 2. Siempre PRIMARY KEY en cada tabla
+-- ✅ 3. Declara NOT NULL en columnas obligatorias
+-- ✅ 4. Usa DEFAULT para valores comunes (fechas, estados, flags)
+-- ✅ 5. Nombra los constraints explícitamente
+CONSTRAINT fk_trans_sender FOREIGN KEY ...
+
+-- ✅ 6. Índices en columnas usadas en JOIN y WHERE frecuentes
+-- ✅ 7. Usa DECIMAL para dinero, nunca FLOAT
+-- ✅ 8. VARCHAR para texto variable, CHAR para longitud fija conocida
+
+-- ❌ Evitar: tablas sin PK
+-- ❌ Evitar: usar TEXT cuando VARCHAR es suficiente
+-- ❌ Evitar: FK sin índice en la columna hija (ralentiza las consultas)
+```

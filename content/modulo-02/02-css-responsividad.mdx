@@ -1,0 +1,287 @@
+---
+titulo: "Estilos CSS y Responsividad"
+descripcion: "Aprende a dar estilo a tus páginas HTML con CSS3: selectores, el modelo de caja, Flexbox, CSS Grid y media queries para diseño responsivo."
+tipo: "teoria"
+modulo: 2
+duracion: "8h"
+objetivos:
+  - "Comprender la cascada, herencia y especificidad en CSS."
+  - "Aplicar el modelo de caja (box model) correctamente."
+  - "Crear layouts con Flexbox y CSS Grid."
+  - "Implementar diseño responsivo con media queries."
+  - "Usar variables CSS (custom properties) para mantener consistencia visual."
+conceptosClave:
+  - "Cascada y especificidad"
+  - "Box model"
+  - "Flexbox"
+  - "CSS Grid"
+  - "Media queries"
+  - "Variables CSS"
+recursos:
+  - { nombre: "CSS Tricks — Flexbox Guide", url: "https://css-tricks.com/snippets/css/a-guide-to-flexbox/" }
+  - { nombre: "CSS Tricks — Grid Guide", url: "https://css-tricks.com/snippets/css/complete-guide-grid/" }
+  - { nombre: "MDN — CSS Reference", url: "https://developer.mozilla.org/es/docs/Web/CSS/Reference" }
+  - { nombre: "Flexbox Froggy (juego)", url: "https://flexboxfroggy.com/#es" }
+  - { nombre: "Grid Garden (juego)", url: "https://cssgridgarden.com/#es" }
+---
+
+# Estilos CSS y Responsividad
+
+CSS (Cascading Style Sheets) es el lenguaje que controla la **presentación visual** de los elementos HTML. El nombre "Cascading" hace referencia a cómo se aplican las reglas: de arriba hacia abajo, resolviendo conflictos por especificidad.
+
+---
+
+## 1. Anatomía de una regla CSS
+
+```css
+/* selector { propiedad: valor; } */
+h1 {
+  color: #1e293b;
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+```
+
+### Formas de vincular CSS al HTML
+
+```html
+<!-- 1. Externo (recomendado) -->
+<link rel="stylesheet" href="styles.css" />
+
+<!-- 2. Interno (útil para componentes pequeños) -->
+<style>
+  body { margin: 0; }
+</style>
+
+<!-- 3. En línea (evitar — difícil de mantener) -->
+<p style="color: red;">Texto rojo</p>
+```
+
+---
+
+## 2. Selectores y especificidad
+
+```css
+/* Etiqueta (especificidad: 0,0,1) */
+p { color: gray; }
+
+/* Clase (especificidad: 0,1,0) */
+.destacado { color: blue; }
+
+/* ID (especificidad: 1,0,0) */
+#titulo-principal { color: black; }
+
+/* Descendiente */
+nav ul li a { text-decoration: none; }
+
+/* Pseudo-clase */
+a:hover { color: #6366f1; }
+
+/* Pseudo-elemento */
+p::first-line { font-weight: bold; }
+```
+
+<Callout type="tip">
+Evita el uso de IDs (`#id`) para estilos. Tienen especificidad muy alta y hacen el CSS difícil de sobreescribir. Prefiere clases (`.clase`).
+</Callout>
+
+---
+
+## 3. El modelo de caja (Box Model)
+
+Todo elemento HTML es una caja rectangular con 4 capas:
+
+```
+┌─────────────────────────────┐
+│           margin            │
+│  ┌───────────────────────┐  │
+│  │        border         │  │
+│  │  ┌─────────────────┐  │  │
+│  │  │     padding     │  │  │
+│  │  │  ┌───────────┐  │  │  │
+│  │  │  │  content  │  │  │  │
+│  │  │  └───────────┘  │  │  │
+│  │  └─────────────────┘  │  │
+│  └───────────────────────┘  │
+└─────────────────────────────┘
+```
+
+```css
+/* box-sizing: border-box hace que padding y border NO aumenten el tamaño total */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+.tarjeta {
+  width: 300px;        /* Ancho del contenido */
+  padding: 20px;       /* Espacio interior */
+  border: 1px solid #e2e8f0;
+  margin: 16px auto;   /* auto centra horizontalmente */
+  border-radius: 8px;
+}
+```
+
+---
+
+## 4. Flexbox
+
+Flexbox es ideal para **una dimensión** (fila o columna).
+
+```css
+.contenedor {
+  display: flex;
+  flex-direction: row;         /* row | column | row-reverse */
+  justify-content: space-between; /* alineación en el eje principal */
+  align-items: center;         /* alineación en el eje cruzado */
+  gap: 16px;                   /* espacio entre hijos */
+  flex-wrap: wrap;             /* permite que los hijos salten de línea */
+}
+
+.hijo {
+  flex: 1;             /* crece para ocupar el espacio disponible */
+  min-width: 200px;    /* ancho mínimo antes de saltar de línea */
+}
+```
+
+**Ejemplo: barra de navegación**
+
+```css
+nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 24px;
+  height: 64px;
+  background: #1e293b;
+}
+
+nav ul {
+  display: flex;
+  list-style: none;
+  gap: 24px;
+  margin: 0;
+  padding: 0;
+}
+```
+
+---
+
+## 5. CSS Grid
+
+Grid es ideal para **dos dimensiones** (filas y columnas simultáneas).
+
+```css
+.galeria {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr); /* 3 columnas iguales */
+  gap: 16px;
+}
+
+/* Grid con áreas nombradas */
+.layout {
+  display: grid;
+  grid-template-areas:
+    "header header"
+    "sidebar main"
+    "footer footer";
+  grid-template-columns: 250px 1fr;
+  grid-template-rows: 64px 1fr 48px;
+  min-height: 100vh;
+}
+
+header { grid-area: header; }
+aside  { grid-area: sidebar; }
+main   { grid-area: main; }
+footer { grid-area: footer; }
+```
+
+---
+
+## 6. Diseño Responsivo y Media Queries
+
+El diseño responsivo adapta la interfaz al tamaño del dispositivo.
+
+```css
+/* Mobile First: estilos base para móvil */
+.tarjetas {
+  display: grid;
+  grid-template-columns: 1fr; /* 1 columna en móvil */
+  gap: 16px;
+}
+
+/* Tablet (≥ 768px) */
+@media (min-width: 768px) {
+  .tarjetas {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Desktop (≥ 1024px) */
+@media (min-width: 1024px) {
+  .tarjetas {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+```
+
+<Callout type="tip">
+Adopta el enfoque **Mobile First**: diseña primero para pantallas pequeñas y agrega complejidad con `min-width`. Es más fácil escalar hacia arriba que hacia abajo.
+</Callout>
+
+---
+
+## 7. Variables CSS (Custom Properties)
+
+Las variables CSS permiten reutilizar valores y centralizar el sistema de diseño.
+
+```css
+:root {
+  /* Paleta de colores */
+  --color-primario: #6366f1;
+  --color-primario-hover: #4f46e5;
+  --color-fondo: #ffffff;
+  --color-texto: #1e293b;
+
+  /* Tipografía */
+  --fuente-base: 'Inter', sans-serif;
+  --tamano-base: 1rem;
+
+  /* Espaciado */
+  --espacio-sm: 8px;
+  --espacio-md: 16px;
+  --espacio-lg: 32px;
+
+  /* Bordes */
+  --radio-borde: 8px;
+}
+
+.boton-primario {
+  background-color: var(--color-primario);
+  padding: var(--espacio-sm) var(--espacio-md);
+  border-radius: var(--radio-borde);
+  font-family: var(--fuente-base);
+}
+
+.boton-primario:hover {
+  background-color: var(--color-primario-hover);
+}
+```
+
+---
+
+## 8. Ejercicios de práctica
+
+### Ejercicio A — Layout con Flexbox
+Crea una barra de navegación responsiva con:
+- Logo a la izquierda.
+- Links de navegación a la derecha.
+- En pantallas pequeñas (< 768px), los links se apilan verticalmente.
+
+### Ejercicio B — Galería responsiva con Grid
+Crea una galería de 6 tarjetas que muestre:
+- 1 columna en móvil.
+- 2 columnas en tablet.
+- 3 columnas en desktop.
+
+### Ejercicio C — Variables CSS
+Crea un sistema de diseño con variables CSS para colores, tipografía y espaciado, y aplícalo a al menos 3 componentes (botón, tarjeta y formulario).

@@ -1,0 +1,255 @@
+---
+titulo: "Next.js App Router"
+tipo: practica
+duracion: 12h
+objetivos:
+  - Distinguir Server Components de Client Components y elegir el adecuado para cada caso
+  - Estructurar un dashboard con layouts anidados y groups de rutas
+  - Manejar rutas dinámicas con params como Promise en Next.js 15
+  - Proteger rutas con middleware y cookies de sesión
+recursos:
+  - { nombre: "Next.js Docs — App Router", url: "https://nextjs.org/docs/app" }
+  - { nombre: "Server vs Client Components", url: "https://nextjs.org/docs/app/building-your-application/rendering" }
+  - { nombre: "Next.js Middleware", url: "https://nextjs.org/docs/app/building-your-application/routing/middleware" }
+  - { nombre: "Next.js 15 Migration Guide", url: "https://nextjs.org/docs/app/building-your-application/upgrading/version-15" }
+---
+
+# Next.js App Router
+
+Next.js es el meta-framework de React más adoptado en la industria. La versión 15 con **App Router** cambia la forma de pensar el routing: las carpetas son rutas, los componentes son Server Components por defecto y los layouts permiten compartir UI sin re-renders innecesarios.
+
+## Pages Router vs App Router
+
+| Característica | Pages Router | App Router |
+|---|---|---|
+| Carpeta raíz | `pages/` | `app/` |
+| Data fetching | `getServerSideProps` / `getStaticProps` | `async` Server Components |
+| Layouts | Sin soporte nativo | `layout.tsx` anidados |
+| Server Components | ✗ | ✓ por defecto |
+| Streaming / Suspense | Limitado | ✓ nativo |
+| Gestión de estado | Solo client | Server + Client separados |
+
+<Callout type="tip">
+En proyectos nuevos siempre usa **App Router**. Pages Router solo si mantienes código legado.
+</Callout>
+
+## Estructura de carpetas del proyecto FactorDash
+
+```
+src/app/
+├── layout.tsx                ← Layout raíz (html, body, providers)
+├── page.tsx                  ← / → redirige a /dashboard o /login
+│
+├── (auth)/                   ← Route group — no agrega segmento a URL
+│   ├── login/
+│   │   └── page.tsx          ← /login
+│   └── layout.tsx            ← Layout centrado para pantallas de auth
+│
+└── dashboard/
+    ├── layout.tsx            ← Layout del dashboard (sidebar + navbar)
+    ├── page.tsx              ← /dashboard
+    ├── guitarras/
+    │   ├── page.tsx          ← /dashboard/guitarras
+    │   └── [id]/
+    │       └── page.tsx      ← /dashboard/guitarras/[id]
+    ├── perfil/
+    │   └── page.tsx          ← /dashboard/perfil
+    └── loading.tsx           ← Fallback Suspense para todo /dashboard
+```
+
+Los **route groups** `(auth)` organizan archivos sin afectar la URL. Son ideales para agrupar rutas que comparten un layout distinto.
+
+## Server Components vs Client Components
+
+```tsx
+// SERVER COMPONENT (por defecto, sin 'use client')
+// ✅ Puede: fetch directo, leer BD, usar env vars del servidor
+// ✗ No puede: useState, useEffect, event handlers, localStorage
+
+// app/dashboard/guitarras/page.tsx
+import { getGuitarras } from '@/lib/api';
+
+export default async function GuitarrasPage() {
+  // fetch sin useEffect ni useState: ocurre en el servidor
+  const guitarras = await getGuitarras();
+
+  return (
+    <div>
+      <h1>Catálogo de Guitarras</h1>
+      {/* Tabla es un Server Component también */}
+      <GuitarrasTable items={guitarras} />
+    </div>
+  );
+}
+```
+
+```tsx
+'use client'; // CLIENT COMPONENT
+// ✅ Puede: useState, useEffect, event handlers, localStorage
+// ✗ No puede: fetch directo al servidor (usa API routes)
+
+// components/guitar/GuitarFilter.tsx
+import { useState } from 'react';
+
+interface GuitarFilterProps {
+  onFilter: (tipo: string) => void;
+}
+
+export function GuitarFilter({ onFilter }: GuitarFilterProps) {
+  const [tipo, setTipo] = useState('');
+
+  return (
+    <select
+      value={tipo}
+      onChange={(e) => {
+        setTipo(e.target.value);
+        onFilter(e.target.value);
+      }}
+    >
+      <option value="">Todos</option>
+      <option value="electrica">Eléctrica</option>
+      <option value="acustica">Acústica</option>
+    </select>
+  );
+}
+```
+
+**Regla práctica:** usa Server Components para obtener datos. Empuja `'use client'` hacia los bordes del árbol de componentes (sólo los que necesitan interactividad).
+
+## Layouts anidados
+
+```tsx
+// app/dashboard/layout.tsx — Layout compartido por todo /dashboard
+import { Sidebar } from '@/components/layout/Sidebar';
+import { Navbar } from '@/components/layout/Navbar';
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex h-screen">
+      <Sidebar />
+      <div className="flex flex-col flex-1">
+        <Navbar />
+        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+      </div>
+    </div>
+  );
+}
+```
+
+```tsx
+// app/(auth)/layout.tsx — Layout para login/register
+export default function AuthLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-zinc-950">
+      {children}
+    </div>
+  );
+}
+```
+
+<Callout type="warning">
+El `layout.tsx` raíz (`app/layout.tsx`) **siempre** debe tener `<html>` y `<body>`. Los layouts anidados NO deben repetirlos.
+</Callout>
+
+## Rutas dinámicas y params en Next.js 15
+
+```tsx
+// app/dashboard/guitarras/[id]/page.tsx
+// En Next.js 15 los params son una Promise — deben awaitearse
+
+interface PageProps {
+  params: Promise<{ id: string }>;
+}
+
+export default async function GuitarDetailPage({ params }: PageProps) {
+  const { id } = await params; // ← await obligatorio en Next.js 15
+  const guitarra = await getGuitarraById(id);
+
+  if (!guitarra) {
+    notFound(); // → muestra app/not-found.tsx
+  }
+
+  return (
+    <div>
+      <h1>{guitarra.nombre}</h1>
+      <p>Tipo: {guitarra.tipo}</p>
+    </div>
+  );
+}
+
+// Metadata dinámica (para SEO)
+export async function generateMetadata({ params }: PageProps) {
+  const { id } = await params;
+  const guitarra = await getGuitarraById(id);
+  return { title: guitarra?.nombre ?? 'Guitarra no encontrada' };
+}
+```
+
+## Middleware de autenticación
+
+```ts
+// src/middleware.ts — se ejecuta antes de cada petición
+import { NextRequest, NextResponse } from 'next/server';
+
+const PUBLIC_ROUTES = ['/login', '/api/auth/login'];
+
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Permite rutas públicas y assets sin verificación
+  if (PUBLIC_ROUTES.some((r) => pathname.startsWith(r))) {
+    return NextResponse.next();
+  }
+
+  const token = request.cookies.get('accessToken')?.value;
+
+  if (!token) {
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('redirect', pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  // Aplica middleware solo a rutas de la app, no a archivos estáticos
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.png$).*)'],
+};
+```
+
+## Estrategias de rendering
+
+| Estrategia | Cuándo | Cómo en App Router |
+|---|---|---|
+| **SSR** (Server-Side Rendering) | Datos que cambian por petición (usuario logueado, carrito) | `fetch(url, { cache: 'no-store' })` |
+| **SSG** (Static Generation) | Datos estáticos (marketing, blog) | `fetch(url)` por defecto |
+| **ISR** (Incremental Static Regen) | Datos que cambian cada X minutos | `fetch(url, { next: { revalidate: 60 } })` |
+| **Client-side** | Datos privados del usuario | `useEffect` + `fetch` desde `'use client'` |
+
+```ts
+// lib/api.ts — cliente HTTP centralizado
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+
+export async function getGuitarras(): Promise<Guitarra[]> {
+  const res = await fetch(`${API_BASE}/api/guitarras`, {
+    cache: 'no-store', // SSR: siempre fresco
+  });
+  if (!res.ok) throw new Error('Error al obtener guitarras');
+  return res.json();
+}
+```
+
+## Ejercicios propuestos
+
+1. Crea la página `/dashboard` con un Server Component que muestre 3 cards de métricas (total guitarras, disponibles, sin stock) obtenidas con `fetch`.
+2. Añade un `loading.tsx` en `/dashboard/guitarras` con un skeleton animado en CSS.
+3. Implementa una ruta `/dashboard/guitarras/nueva` con un formulario `'use client'` que llame a `POST /api/guitarras` al enviarse.

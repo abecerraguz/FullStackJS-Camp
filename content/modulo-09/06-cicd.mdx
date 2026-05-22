@@ -1,0 +1,267 @@
+---
+titulo: "CI/CD con GitHub Actions"
+tipo: practica
+duracion: 6h
+objetivos:
+  - Diseñar un pipeline con jobs lint → typecheck → build → push → deploy
+  - Configurar secretos de GitHub para credenciales de GCP
+  - Implementar una estrategia de branches GitFlow simplificado
+  - Autenticar con GCP usando Workload Identity Federation (sin credenciales en texto)
+recursos:
+  - { nombre: "GitHub Actions Docs", url: "https://docs.github.com/en/actions" }
+  - { nombre: "Google GitHub Actions", url: "https://github.com/google-github-actions" }
+  - { nombre: "Workload Identity Federation", url: "https://cloud.google.com/iam/docs/workload-identity-federation" }
+  - { nombre: "GitHub Secrets", url: "https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions" }
+---
+
+# CI/CD con GitHub Actions
+
+**CI (Continuous Integration)** es la práctica de integrar código frecuentemente con validaciones automáticas. **CD (Continuous Delivery/Deployment)** extiende eso hacia el despliegue automático a producción.
+
+## ¿Por qué CI/CD?
+
+| Sin CI/CD | Con CI/CD |
+|---|---|
+| "Funciona en mi máquina" | Verificado en entorno neutral |
+| Deploy manual, lento y propenso a errores | Deploy automático al hacer push |
+| Bugs descubiertos en producción | Bugs detectados antes del merge |
+| Coordinación manual entre equipo | Pipeline compartido por todos |
+| Miedo a desplegar | Confianza en cada deploy |
+
+## Conceptos de GitHub Actions
+
+| Concepto | Descripción |
+|---|---|
+| **Workflow** | Archivo YAML en `.github/workflows/` que define el pipeline |
+| **Event** | Dispara el workflow (`push`, `pull_request`, `schedule`, `workflow_dispatch`) |
+| **Job** | Unidad de ejecución independiente dentro de un workflow |
+| **Step** | Comando o acción dentro de un job |
+| **Action** | Bloque reutilizable de pasos (ej: `actions/checkout@v4`) |
+| **Runner** | Máquina virtual donde corren los jobs (`ubuntu-latest`, `macos-latest`) |
+| **Secret** | Variable encriptada (contraseñas, tokens, claves) |
+| **Artifact** | Archivo generado en el workflow para compartir entre jobs o descargar |
+
+## Pipeline completo para FactorDash
+
+```yaml
+# .github/workflows/ci-cd.yml
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: us-central1
+  REPOSITORY: factordash
+  IMAGE_FRONTEND: factordash-frontend
+  IMAGE_API: factordash-api
+
+jobs:
+  # ─── Job 1: Lint y Typecheck ──────────────────────────────────────
+  lint-and-typecheck:
+    name: Lint & TypeCheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+        working-directory: ./frontend
+
+      - name: Lint ESLint
+        run: npm run lint
+        working-directory: ./frontend
+
+      - name: TypeScript check
+        run: npm run typecheck
+        working-directory: ./frontend
+
+  # ─── Job 2: Tests ─────────────────────────────────────────────────
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: api/package-lock.json
+
+      - name: Instalar dependencias API
+        run: npm ci
+        working-directory: ./api
+
+      - name: Ejecutar tests
+        run: npm test
+        working-directory: ./api
+        env:
+          DATABASE_URL: postgres://test:test@localhost:5432/test_db
+          JWT_SECRET: test-secret-for-ci
+
+  # ─── Job 3: Build y Push a Artifact Registry ──────────────────────
+  build-and-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    needs: test
+    # Solo ejecutar en push a main (no en PRs)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: read
+      id-token: write  # necesario para Workload Identity Federation
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Autenticación con GCP sin guardar credenciales en texto plano
+      - name: Autenticar con GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configurar Docker para Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Build y Push imagen Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_FRONTEND }}:latest
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build y Push imagen API
+        uses: docker/build-push-action@v5
+        with:
+          context: ./api
+          push: true
+          tags: |
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_API }}:latest
+            ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_API }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─── Job 4: Deploy a Cloud Run ────────────────────────────────────
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Autenticar con GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Deploy API en Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: factordash-api
+          region: ${{ env.REGION }}
+          image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_API }}:${{ github.sha }}
+          env_vars: |
+            NODE_ENV=production
+          secrets: |
+            DATABASE_URL=DATABASE_URL:latest
+            JWT_SECRET=JWT_SECRET:latest
+
+      - name: Deploy Frontend en Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: factordash-frontend
+          region: ${{ env.REGION }}
+          image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
+          env_vars: |
+            NODE_ENV=production
+```
+
+## Secretos necesarios en GitHub
+
+Configura estos secretos en **Settings → Secrets and variables → Actions** de tu repositorio:
+
+| Secret | Descripción |
+|---|---|
+| `GCP_PROJECT_ID` | ID del proyecto en Google Cloud |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | Provider de Workload Identity Federation |
+| `GCP_SERVICE_ACCOUNT` | Email de la service account de GCP |
+| `NEXT_PUBLIC_API_URL` | URL pública de la API (Cloud Run) |
+| `DATABASE_URL` | Cadena de conexión a Cloud SQL |
+| `JWT_SECRET` | Secret para firmar access tokens |
+| `JWT_REFRESH_SECRET` | Secret para firmar refresh tokens |
+
+<Callout type="tip">
+**Workload Identity Federation** es más seguro que exportar un JSON de service account como secreto. Crea una identidad temporal ligada al repositorio de GitHub sin guardar credenciales de larga duración.
+</Callout>
+
+## Estrategia de branches: GitFlow simplificado
+
+```
+main ─────────────────────────────────────────► producción
+  │
+  ├── develop ─────────────────────────────────► staging
+  │     │
+  │     ├── feature/login-page ──────────────►  PR → develop
+  │     ├── feature/guitar-crud ─────────────►  PR → develop
+  │     └── fix/token-refresh ──────────────►   PR → develop
+  │
+  └── hotfix/bug-crítico ───────────────────►   PR → main + develop
+```
+
+| Branch | Propósito | Merge hacia |
+|---|---|---|
+| `main` | Código en producción, siempre estable | — |
+| `develop` | Integración continua del equipo | `main` (release) |
+| `feature/*` | Nueva funcionalidad | `develop` |
+| `fix/*` | Corrección de bug no urgente | `develop` |
+| `hotfix/*` | Fix urgente en producción | `main` + `develop` |
+
+## Ejercicios propuestos
+
+1. Crea el archivo `.github/workflows/ci-cd.yml` en tu repositorio con al menos los jobs de `lint-and-typecheck` y `test`.
+2. Configura los secretos de GitHub con valores de prueba y verifica que el workflow se ejecuta correctamente con `workflow_dispatch`.
+3. Añade un step de notificación al job `deploy` que use `curl` para enviar un mensaje a un webhook de Slack o Discord cuando el deploy sea exitoso.

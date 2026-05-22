@@ -1,0 +1,33 @@
+---
+titulo: "Proyecto integrador"
+tipo: proyecto
+duracion: 8h
+objetivos:
+  - Modelar entidades reales con clases ES6 y aplicar encapsulación
+  - Manipular el DOM de forma dinámica sin librerías externas
+  - Implementar comunicación asíncrona con Promises y async/await
+  - Aplicar delegación de eventos y persistencia con localStorage
+---
+
+# Proyecto integrador
+
+## Gestor de Tareas — Vanilla JS
+
+Construir un **Gestor de Tareas** completo que demuestre el dominio de POO, manipulación del DOM, gestión de eventos y comunicación asíncrona, sin usar ninguna librería externa.
+
+**Paso a paso**
+
+1. Define una clase `Tarea` con propiedades: `id`, `titulo`, `descripcion`, `completada` y `fechaCreacion`.
+2. Define una clase `GestorTareas` que administre la colección: métodos `agregar`, `editar`, `eliminar`, `filtrar` y `marcarCompleta`.
+3. Implementa una **fake-API asíncrona** (`fakeFetch`) que devuelva Promises con simulación de latencia (300–800 ms) y lance errores aleatorios (~10% de las veces).
+4. Construye la **interfaz DOM**: formulario de creación, lista de tareas renderizada dinámicamente, y botones de editar, eliminar y completar.
+5. Usa **delegación de eventos** en el contenedor de la lista para manejar las acciones de cada tarea.
+6. Maneja los estados de carga (`loading`, `error`, `success`) de forma visible en la interfaz.
+7. Persiste las tareas en `localStorage` para que sobrevivan al refresco de página.
+
+**Entregable**
+
+Sube el **link del repositorio GitHub** que contenga:
+- Los archivos fuente (`index.html` y módulos ES: `Tarea.js`, `GestorTareas.js`, `api.js`, `ui.js`)
+- `README.md` con descripción de la arquitectura y cómo ejecutar el proyecto
+- El proyecto debe funcionar correctamente abriendo `index.html` directamente en el navegador

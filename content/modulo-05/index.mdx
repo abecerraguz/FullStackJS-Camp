@@ -1,0 +1,65 @@
+---
+titulo: "Bases de Datos Relacionales"
+descripcion: "Fundamentos de SQL, PostgreSQL, DBeaver, transacciones DDL/DML y modelado entidad-relación."
+modulo: 5
+---
+
+# Módulo V — Bases de Datos Relacionales
+
+<Callout type="tip">
+Módulo de 44 horas. Prerrequisito: haber completado los módulos I al IV.
+</Callout>
+
+## ¿Qué aprenderás?
+
+Las bases de datos relacionales son el corazón del almacenamiento de información en aplicaciones profesionales. En este módulo aprenderás a **diseñar, crear y consultar bases de datos** usando SQL estándar con MySQL/PostgreSQL.
+
+| Tema | Tipo | Duración |
+|------|------|----------|
+| Introducción a SQL | Teoría | 4h |
+| Uso de DBeaver | Práctica | 4h |
+| Manipulación de Datos DML (Parte I) | Práctica | 6h |
+| Manipulación de Datos DML (Parte II) | Práctica | 6h |
+| Definición de Tablas DDL (Parte I) | Teoría | 4h |
+| Definición de Tablas DDL (Parte II) | Práctica | 4h |
+| Modelo Entidad-Relación | Proyecto | 4h |
+| Gestión de Usuarios y Permisos | Teoría | 4h |
+| Importación, Exportación y Backup | Práctica | 4h |
+| Funciones de Texto y Fecha | Práctica | 4h |
+
+## Habilidades que desarrollarás
+
+- Comprender el **modelo relacional** y la diferencia entre SQL y NoSQL
+- Consultar datos con **SELECT**, filtros **WHERE**, **JOIN** entre tablas y **GROUP BY**
+- Manipular datos con **INSERT**, **UPDATE** y **DELETE** de forma segura
+- Definir estructuras con **CREATE TABLE**, tipos de datos, **PRIMARY KEY** y **FOREIGN KEY**
+- Aplicar **transacciones** con COMMIT y ROLLBACK
+- Diseñar un esquema desde cero usando el **Modelo Entidad-Relación** y las 3 formas normales
+- Gestionar **usuarios y permisos** con GRANT y REVOKE
+- Importar datos masivos desde **CSV** y generar backups con `mysqldump`/`pg_dump`
+- Usar **funciones de texto y fecha** para reportes y limpieza de datos
+
+## Proyecto integrador
+
+### Alke Wallet — Base de Datos SQL
+
+Diseñar e implementar la base de datos **Alke Wallet**: un sistema de billetera digital con usuarios, monedas y transacciones entre cuentas, aplicando modelado entidad-relación, DDL, DML y transacciones ACID.
+
+**Paso a paso**
+
+1. Diseña el **Modelo Entidad-Relación (MER)** con al menos 3 entidades: `usuarios`, `monedas` y `transacciones`. Identifica PKs, FKs y cardinalidades.
+2. Escribe el script **DDL** (`schema.sql`): `CREATE TABLE` con tipos correctos, `PRIMARY KEY`, `FOREIGN KEY`, `NOT NULL` y `CHECK` constraints.
+3. Escribe el script **DML** (`seed.sql`): inserta mínimo 5 usuarios, 3 monedas y 10 transacciones de ejemplo.
+4. Escribe consultas de **lectura** (`queries.sql`): balance por usuario, historial de transacciones con `JOIN`, top 3 usuarios con mayor saldo.
+5. Implementa una **transacción** que transfiera saldo entre dos usuarios con `BEGIN`, `COMMIT` y `ROLLBACK` ante saldo insuficiente.
+6. Configura **usuarios y permisos**: crea un usuario `wallet_app` con solo los privilegios necesarios (`SELECT`, `INSERT`, `UPDATE`).
+
+**Entregable**
+
+Sube un archivo `.zip` con el nombre `apellido_nombre_modulo5.zip` que contenga:
+- `schema.sql` — DDL de todas las tablas
+- `seed.sql` — datos de prueba
+- `queries.sql` — consultas de lectura y la transacción
+- `mer.png` o `mer.pdf` — imagen del modelo entidad-relación
+- Capturas de DBeaver con las tablas creadas y al menos 2 consultas ejecutadas
+

@@ -1,0 +1,241 @@
+---
+titulo: "Middleware en Express"
+descripcion: "Comprende qué es un middleware, cómo funciona la cadena de middlewares y cómo crear los tuyos propios."
+tipo: teoria
+duracion: "2h"
+objetivos:
+  - "Comprender qué es un middleware y su firma (req, res, next)"
+  - "Diferenciar middleware de aplicación, de ruta y de error"
+  - "Usar middlewares integrados: express.json() y express.static()"
+  - "Crear middlewares personalizados para logging y validación"
+  - "Entender el orden de ejecución de la cadena de middlewares"
+recursos:
+  - nombre: "Express — Uso de middleware"
+    url: "https://expressjs.com/es/guide/using-middleware.html"
+  - nombre: "Express — Escribir middleware"
+    url: "https://expressjs.com/es/guide/writing-middleware.html"
+---
+
+# Middleware en Express
+
+Un **middleware** es simplemente una función que tiene acceso al objeto de solicitud (`req`), al objeto de respuesta (`res`) y a la **siguiente** función middleware en el ciclo de solicitud-respuesta (`next`).
+
+## Anatomía de un middleware
+
+```javascript
+// Firma estándar de un middleware
+function miMiddleware(req, res, next) {
+  // 1. Hacer algo (leer headers, validar, logear...)
+  console.log(`${req.method} ${req.url}`);
+
+  // 2. Modificar req o res (opcional)
+  req.timestamp = new Date();
+
+  // 3. Pasar al siguiente middleware O terminar la respuesta
+  next(); // Continúa la cadena
+  // res.status(401).json({ error: "No autorizado" }); // Termina aquí
+}
+```
+
+La cadena de middlewares funciona así:
+
+```
+Request → MW1 → MW2 → MW3 → Ruta → Response
+              ↑ si no llama a next(), la cadena se detiene
+```
+
+## Registrar middlewares con app.use()
+
+```javascript
+import express from "express";
+const app = express();
+
+// Middleware global (se ejecuta en TODAS las rutas)
+app.use(miMiddleware);
+
+// Middleware solo para rutas que empiecen con /api
+app.use("/api", autenticacionMiddleware);
+
+// Middleware solo para una ruta específica
+app.get("/admin", verificarAdmin, (req, res) => {
+  res.send("Panel de administración");
+});
+```
+
+<Callout type="info">
+El **orden importa**: los middlewares se ejecutan en el orden en que los registras con `app.use()`. Siempre registra los middlewares globales **antes** que las rutas.
+</Callout>
+
+## Middlewares integrados en Express
+
+Express incluye algunos middlewares muy útiles:
+
+```javascript
+import express from "express";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const app = express();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// 1. Parsea el body de requests con Content-Type: application/json
+app.use(express.json());
+
+// 2. Parsea el body de formularios HTML
+app.use(express.urlencoded({ extended: true }));
+
+// 3. Sirve archivos estáticos (HTML, CSS, JS, imágenes)
+app.use(express.static(path.join(__dirname, "public")));
+
+// 4. Sirve estáticos con prefijo de URL
+app.use("/assets", express.static(path.join(__dirname, "assets")));
+```
+
+### ¿Qué hace express.json()?
+
+Sin `express.json()`, `req.body` es `undefined`:
+
+```javascript
+// ❌ Sin express.json()
+app.post("/usuarios", (req, res) => {
+  console.log(req.body); // undefined
+});
+
+// ✅ Con express.json()
+app.use(express.json());
+app.post("/usuarios", (req, res) => {
+  console.log(req.body); // { nombre: "Ana", email: "ana@mail.com" }
+});
+```
+
+## Middlewares personalizados
+
+### Logger de requests
+
+```javascript
+// middlewares/logger.js
+export function logger(req, res, next) {
+  const inicio = Date.now();
+
+  // Hook: se ejecuta cuando la respuesta termina
+  res.on("finish", () => {
+    const duracion = Date.now() - inicio;
+    const estado = res.statusCode >= 400 ? "ERROR" : "OK";
+    console.log(
+      `[${estado}] ${new Date().toISOString()} ${req.method} ${req.url} ${res.statusCode} ${duracion}ms`
+    );
+  });
+
+  next();
+}
+```
+
+### Validador de JSON body
+
+```javascript
+// middlewares/validarBody.js
+export function validarBody(campos) {
+  return (req, res, next) => {
+    const faltantes = campos.filter((campo) => !req.body[campo]);
+
+    if (faltantes.length > 0) {
+      return res.status(400).json({
+        error: "Campos requeridos faltantes",
+        faltantes,
+      });
+    }
+
+    next();
+  };
+}
+```
+
+### Middleware de autenticación
+
+```javascript
+// middlewares/auth.js
+export function requireAuth(req, res, next) {
+  const token = req.headers["authorization"]?.replace("Bearer ", "");
+
+  if (!token) {
+    return res.status(401).json({ error: "Token requerido" });
+  }
+
+  // En producción validarías el JWT aquí
+  if (token !== "mi-token-secreto") {
+    return res.status(403).json({ error: "Token inválido" });
+  }
+
+  // Adjuntamos datos del usuario al req para usarlos en la ruta
+  req.usuario = { id: 1, nombre: "Admin" };
+  next();
+}
+```
+
+## Uso combinado
+
+```javascript
+// server.js
+import express from "express";
+import { logger } from "./middlewares/logger.js";
+import { validarBody } from "./middlewares/validarBody.js";
+import { requireAuth } from "./middlewares/auth.js";
+
+const app = express();
+
+// Middlewares globales
+app.use(express.json());
+app.use(logger);
+
+// Ruta pública
+app.get("/api/productos", (req, res) => {
+  res.json([{ id: 1, nombre: "Laptop" }]);
+});
+
+// Ruta con validación de body
+app.post(
+  "/api/productos",
+  requireAuth,
+  validarBody(["nombre", "precio"]),
+  (req, res) => {
+    const { nombre, precio } = req.body;
+    res.status(201).json({ id: Date.now(), nombre, precio });
+  }
+);
+
+app.listen(3000);
+```
+
+## Middleware de manejo de errores
+
+El middleware de errores tiene **4 parámetros**: `(err, req, res, next)`:
+
+```javascript
+// Siempre al final, después de todas las rutas
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+
+  const status = err.status ?? 500;
+  const mensaje = err.message ?? "Error interno del servidor";
+
+  res.status(status).json({ error: mensaje });
+});
+
+// Para activarlo, llama a next(error) desde cualquier middleware
+app.get("/falla", (req, res, next) => {
+  const error = new Error("Algo salió mal");
+  error.status = 500;
+  next(error); // pasa al middleware de errores
+});
+```
+
+## Resumen: tipos de middleware
+
+| Tipo | Descripción | Ejemplo |
+|------|-------------|---------|
+| De aplicación | Se aplica a toda la app | `app.use(logger)` |
+| De ruta | Solo para un prefijo | `app.use("/api", auth)` |
+| Encadenado | Múltiples en una ruta | `app.post("/ruta", mw1, mw2, handler)` |
+| De error | 4 parámetros, captura errores | `app.use((err, req, res, next) => {})` |
+| Integrado | Incluido en Express | `express.json()`, `express.static()` |
+| De terceros | npm packages | `cors`, `helmet`, `morgan` |

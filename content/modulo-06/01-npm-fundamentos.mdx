@@ -1,0 +1,203 @@
+---
+titulo: "NPM: Comandos y Gestión de Paquetes"
+descripcion: "Aprende a gestionar proyectos Node.js con NPM: inicializar proyectos, instalar dependencias, manejar versiones y escribir scripts."
+tipo: teoria
+duracion: "2h"
+objetivos:
+  - "Inicializar un proyecto Node.js con npm init"
+  - "Distinguir entre dependencias de producción y desarrollo"
+  - "Entender el sistema de versiones semántico (SemVer)"
+  - "Escribir y ejecutar scripts en package.json"
+  - "Usar las banderas --save, --save-dev y -g correctamente"
+recursos:
+  - nombre: "Documentación oficial de NPM"
+    url: "https://docs.npmjs.com/"
+  - nombre: "SemVer — Versiones semánticas"
+    url: "https://semver.org/lang/es/"
+---
+
+# NPM: Comandos y Gestión de Paquetes
+
+NPM (Node Package Manager) es el gestor de paquetes oficial de Node.js y el repositorio de software más grande del mundo, con más de 2 millones de paquetes disponibles.
+
+## Inicializar un proyecto
+
+```bash
+# Modo interactivo (hace preguntas)
+npm init
+
+# Modo automático (valores por defecto)
+npm init -y
+```
+
+El resultado es un `package.json` — el archivo central de todo proyecto Node.js:
+
+```json
+{
+  "name": "mi-proyecto",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
+```
+
+<Callout type="tip">
+Agrega `"type": "module"` en tu `package.json` para usar **ESModules** (`import`/`export`) en lugar de CommonJS (`require`).
+</Callout>
+
+## Instalar paquetes
+
+```bash
+# Dependencia de producción (va a "dependencies")
+npm install express
+npm install express dotenv
+
+# Dependencia de desarrollo (va a "devDependencies")
+npm install --save-dev nodemon
+
+# Paquete global (disponible en cualquier proyecto)
+npm install -g nodemon pm2
+
+# Instalar todas las dependencias del package.json
+npm install
+```
+
+<Callout type="tip">
+**`node --watch` — alternativa nativa de Node.js (v18.11+, estable en v22+)**
+
+Desde Node v18.11 no es necesario instalar `nodemon` para reinicios automáticos en desarrollo. Úsalo directamente: `node --watch server.js`, o en `package.json`: `"dev": "node --watch server.js"`.
+
+`nodemon` sigue siendo útil cuando necesitas excluir carpetas (`--ignore`), definir extensiones adicionales a vigilar, o trabajar en proyectos con versiones anteriores de Node.
+</Callout>
+
+### ¿Cuándo usar `--save-dev`?
+
+- **`dependencies`**: Paquetes que necesita tu app en producción (Express, axios, dotenv)
+- **`devDependencies`**: Paquetes que solo usas durante el desarrollo (nodemon, eslint, jest)
+
+## Versiones semánticas (SemVer)
+
+El formato es `MAJOR.MINOR.PATCH`:
+
+```
+1.4.2
+│ │ └── PATCH: corrección de bugs (compatible)
+│ └──── MINOR: nueva funcionalidad (compatible)
+└────── MAJOR: cambios que rompen compatibilidad
+```
+
+### Rangos de versión en package.json
+
+```json
+{
+  "dependencies": {
+    "express": "^4.18.2",   // ^ acepta MINOR y PATCH más nuevos (>=4.18.2 <5.0.0)
+    "axios": "~1.4.0",       // ~ acepta solo PATCH más nuevos (>=1.4.0 <1.5.0)
+    "lodash": "4.17.21",     // Versión exacta, sin actualizaciones
+    "chalk": "*"             // Cualquier versión (NO recomendado en producción)
+  }
+}
+```
+
+## Comandos esenciales
+
+```bash
+# Ver paquetes instalados (árbol de dependencias)
+npm list
+npm list --depth=0        # Solo primer nivel
+
+# Actualizar paquetes
+npm update                # Todos según rangos del package.json
+npm update express        # Solo uno
+
+# Desinstalar un paquete
+npm uninstall express
+npm uninstall --save-dev nodemon
+
+# Ver información de un paquete
+npm info express
+npm info express version  # Solo la última versión
+
+# Ver paquetes desactualizados
+npm outdated
+
+# Auditoría de seguridad
+npm audit
+npm audit fix
+```
+
+## Scripts en package.json
+
+Los scripts son comandos que puedes ejecutar con `npm run <nombre>`:
+
+```json
+{
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "build": "tsc",
+    "test": "jest",
+    "lint": "eslint src/"
+  }
+}
+```
+
+```bash
+npm start            # Ejecuta el script "start"
+npm run dev          # Ejecuta "dev"
+npm test             # Alias de npm run test
+npm run lint
+```
+
+<Callout type="info">
+`npm start` y `npm test` son alias especiales que no necesitan `run`. Todos los demás sí: `npm run dev`.
+</Callout>
+
+## El archivo package-lock.json
+
+Cuando instalas paquetes, NPM crea (o actualiza) `package-lock.json`. Este archivo:
+
+- Registra las versiones **exactas** de cada paquete instalado
+- Garantiza instalaciones reproducibles en cualquier máquina
+- **Debe commitearse** en control de versiones
+
+```bash
+# Instalar exactamente lo que dice package-lock.json (ideal en CI/CD)
+npm ci
+```
+
+## node_modules y .gitignore
+
+La carpeta `node_modules` puede contener miles de archivos y pesar varios cientos de MB. **Nunca la incluyas en Git**:
+
+```gitignore
+# .gitignore
+node_modules/
+.env
+dist/
+```
+
+Cualquier colaborador puede recrearla con `npm install`.
+
+## Ejemplo práctico
+
+```javascript
+// index.js — usando paquetes instalados
+import chalk from "chalk";        // npm install chalk
+import { v4 as uuidv4 } from "uuid";  // npm install uuid
+import dayjs from "dayjs";        // npm install dayjs
+
+const id = uuidv4();
+const fecha = dayjs().format("YYYY-MM-DD HH:mm");
+
+console.log(chalk.green("✓ Proyecto iniciado"));
+console.log(chalk.yellow(`  ID: ${id}`));
+console.log(chalk.blue(`  Fecha: ${fecha}`));
+```

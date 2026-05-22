@@ -1,0 +1,335 @@
+---
+titulo: "Funciones de Texto y Fecha"
+descripcion: "Funciones escalares de SQL para manipular cadenas de texto, fechas y horas en MySQL y PostgreSQL."
+tipo: "practica"
+modulo: 5
+duracion: "4h"
+objetivos:
+  - "Usar funciones de texto: LENGTH, UPPER, LOWER, CONCAT, SUBSTRING, TRIM, REPLACE."
+  - "Formatear y extraer partes de fechas con YEAR, MONTH, DAY, DATE_FORMAT."
+  - "Calcular diferencias de tiempo con DATEDIFF y TIMESTAMPDIFF."
+  - "Combinar funciones en consultas SELECT reales."
+  - "Aplicar funciones en WHERE y ORDER BY."
+conceptosClave:
+  - "Función escalar"
+  - "LENGTH"
+  - "CONCAT"
+  - "SUBSTRING"
+  - "DATE_FORMAT"
+  - "DATEDIFF"
+  - "NOW() / CURRENT_DATE"
+recursos:
+  - { nombre: "MySQL Docs — String Functions", url: "https://dev.mysql.com/doc/refman/8.0/en/string-functions.html" }
+  - { nombre: "MySQL Docs — Date Functions", url: "https://dev.mysql.com/doc/refman/8.0/en/date-and-time-functions.html" }
+---
+
+# Funciones de Texto y Fecha
+
+SQL incluye una biblioteca de **funciones escalares** que operan sobre cada fila y devuelven un valor calculado. Son esenciales para reportes, validaciones y limpieza de datos.
+
+---
+
+## Funciones de texto
+
+### LENGTH — longitud de una cadena
+
+```sql
+-- Largo en bytes (MySQL) / caracteres (PostgreSQL)
+SELECT titulo, LENGTH(titulo) AS longitud_titulo
+FROM peliculas
+ORDER BY longitud_titulo DESC
+LIMIT 10;
+
+-- Consultar la longitud máxima entre todos los títulos
+SELECT MAX(LENGTH(titulo)) AS titulo_mas_largo
+FROM peliculas;
+
+-- Filtrar por longitud
+SELECT nombre FROM usuarios WHERE LENGTH(nombre) > 10;
+```
+
+### UPPER / LOWER — cambiar mayúsculas/minúsculas
+
+```sql
+SELECT
+  nombre,
+  UPPER(nombre)   AS nombre_mayus,
+  LOWER(correo)   AS correo_minus
+FROM usuarios;
+
+-- Normalizar correos (búsqueda insensible a mayúsculas)
+SELECT * FROM usuarios
+WHERE LOWER(correo) = LOWER('Juan@EXAMPLE.COM');
+```
+
+### CONCAT — concatenar cadenas
+
+```sql
+-- Concatenar nombre y correo
+SELECT CONCAT(nombre, ' <', correo, '>') AS contacto
+FROM usuarios;
+
+-- MySQL también tiene CONCAT_WS (with separator)
+SELECT CONCAT_WS(' | ', nombre, correo, saldo) AS info
+FROM usuarios;
+```
+
+### SUBSTRING / SUBSTR — extraer parte de una cadena
+
+```sql
+-- SUBSTRING(cadena, posición_inicio, longitud)
+-- Posición empieza en 1 (no en 0)
+
+-- Primeros 3 caracteres del nombre
+SELECT nombre, SUBSTRING(nombre, 1, 3) AS iniciales
+FROM usuarios;
+
+-- Extraer dominio del correo
+SELECT
+  correo,
+  SUBSTRING(correo, LOCATE('@', correo) + 1) AS dominio
+FROM usuarios;
+```
+
+### TRIM / LTRIM / RTRIM — eliminar espacios
+
+```sql
+-- Eliminar espacios al inicio y al final
+SELECT TRIM('  hola mundo  ');        -- 'hola mundo'
+SELECT LTRIM('   izquierda');         -- 'izquierda'
+SELECT RTRIM('derecha   ');           -- 'derecha'
+
+-- Útil para limpiar datos importados desde CSV
+UPDATE usuarios
+SET nombre = TRIM(nombre)
+WHERE nombre != TRIM(nombre);
+```
+
+### REPLACE — reemplazar texto
+
+```sql
+-- Reemplazar todas las ocurrencias de un substring
+SELECT REPLACE(correo, '@example.com', '@empresa.cl') AS correo_nuevo
+FROM usuarios;
+
+-- Caso real: limpiar teléfonos (quitar guiones y espacios)
+SELECT REPLACE(REPLACE(telefono, '-', ''), ' ', '') AS tel_limpio
+FROM usuarios;
+```
+
+### LOCATE / POSITION — buscar posición de un substring
+
+```sql
+-- Retorna la posición de la primera ocurrencia (0 si no existe)
+SELECT correo, LOCATE('@', correo) AS pos_arroba
+FROM usuarios;
+
+-- Filtrar correos que no tienen '@' (datos inválidos)
+SELECT * FROM usuarios WHERE LOCATE('@', correo) = 0;
+```
+
+### LEFT / RIGHT — extraer desde el inicio o el final
+
+```sql
+-- Primeros 4 caracteres
+SELECT LEFT(nombre, 4) FROM usuarios;
+
+-- Últimos 3 caracteres
+SELECT RIGHT(correo, 3) FROM usuarios;  -- '.cl', 'com', etc.
+```
+
+---
+
+## Funciones de fecha y hora
+
+### NOW / CURRENT_TIMESTAMP / CURRENT_DATE
+
+```sql
+-- Fecha y hora actual
+SELECT NOW();                  -- 2024-10-15 14:30:22
+SELECT CURRENT_TIMESTAMP;      -- igual que NOW()
+
+-- Solo fecha
+SELECT CURRENT_DATE;           -- 2024-10-15
+SELECT CURDATE();              -- igual que CURRENT_DATE (MySQL)
+
+-- Solo hora
+SELECT CURTIME();              -- 14:30:22
+```
+
+### Extraer partes de una fecha
+
+```sql
+SELECT
+  transaction_date,
+  YEAR(transaction_date)    AS anio,
+  MONTH(transaction_date)   AS mes,
+  DAY(transaction_date)     AS dia,
+  HOUR(transaction_date)    AS hora,
+  MINUTE(transaction_date)  AS minuto,
+  DAYOFWEEK(transaction_date) AS dia_semana   -- 1=Dom, 2=Lun... 7=Sáb
+FROM transacciones;
+```
+
+### DATE_FORMAT — formatear fechas
+
+```sql
+-- MySQL: DATE_FORMAT(fecha, formato)
+SELECT
+  nombre,
+  DATE_FORMAT(created_at, '%d/%m/%Y')         AS fecha_registro,
+  DATE_FORMAT(created_at, '%W %d de %M, %Y')  AS fecha_larga
+FROM usuarios;
+
+-- Formatos útiles
+-- %Y = año 4 dígitos    %y = año 2 dígitos
+-- %m = mes (01-12)      %M = nombre mes (January...)
+-- %d = día (01-31)      %D = día con sufijo (1st, 2nd...)
+-- %H = hora (00-23)     %h = hora (01-12)
+-- %i = minutos          %s = segundos
+-- %W = nombre día       %a = día abreviado
+```
+
+### PostgreSQL — TO_CHAR (equivalente a DATE_FORMAT)
+
+```sql
+-- PostgreSQL usa TO_CHAR
+SELECT
+  nombre,
+  TO_CHAR(created_at, 'DD/MM/YYYY')          AS fecha_registro,
+  TO_CHAR(created_at, 'Day DD de Month YYYY') AS fecha_larga
+FROM usuarios;
+```
+
+---
+
+## Calcular diferencias de tiempo
+
+### DATEDIFF — diferencia en días
+
+```sql
+-- Días transcurridos desde que se registró cada usuario
+SELECT
+  nombre,
+  created_at,
+  DATEDIFF(CURRENT_DATE, created_at) AS dias_registrado
+FROM usuarios
+ORDER BY dias_registrado DESC;
+
+-- Usuarios registrados en los últimos 30 días
+SELECT * FROM usuarios
+WHERE DATEDIFF(CURRENT_DATE, created_at) <= 30;
+```
+
+### TIMESTAMPDIFF — diferencia en cualquier unidad
+
+```sql
+-- Diferencia en años (útil para calcular "edad" de un registro)
+SELECT
+  nombre,
+  TIMESTAMPDIFF(YEAR, created_at, CURRENT_DATE)  AS anios_cliente,
+  TIMESTAMPDIFF(MONTH, created_at, CURRENT_DATE) AS meses_cliente
+FROM usuarios;
+
+-- Tiempo entre transacciones en horas
+SELECT
+  transaction_id,
+  valor,
+  TIMESTAMPDIFF(HOUR, transaction_date, NOW()) AS horas_atras
+FROM transacciones
+ORDER BY transaction_date DESC;
+```
+
+### DATE_ADD / DATE_SUB — sumar o restar tiempo
+
+```sql
+-- Transacciones del último mes
+SELECT * FROM transacciones
+WHERE transaction_date >= DATE_SUB(NOW(), INTERVAL 1 MONTH);
+
+-- Transacciones de la última semana
+SELECT * FROM transacciones
+WHERE transaction_date >= DATE_SUB(NOW(), INTERVAL 7 DAY);
+
+-- Calcular fecha de vencimiento (30 días desde creación)
+SELECT
+  nombre,
+  created_at,
+  DATE_ADD(created_at, INTERVAL 30 DAY) AS vencimiento
+FROM usuarios;
+```
+
+---
+
+## Consultas combinadas de práctica
+
+### Reporte de películas con datos procesados
+
+```sql
+-- Base de datos películas (del ejercicio complementario)
+SELECT
+  id,
+  titulo,
+  LENGTH(titulo)                    AS longitud_titulo,
+  UPPER(director)                   AS director_mayus,
+  año,
+  CONCAT(titulo, ' (', año, ')')    AS titulo_con_anio
+FROM peliculas
+WHERE año BETWEEN 1990 AND 1999
+ORDER BY titulo ASC;
+```
+
+### Reporte de usuarios de Alke Wallet
+
+```sql
+SELECT
+  user_id,
+  CONCAT(UPPER(LEFT(nombre, 1)), LOWER(SUBSTRING(nombre, 2))) AS nombre_formato,
+  LOWER(correo)                                                AS correo,
+  saldo,
+  DATE_FORMAT(created_at, '%d/%m/%Y')                         AS fecha_registro,
+  DATEDIFF(CURRENT_DATE, created_at)                          AS dias_como_cliente,
+  CASE
+    WHEN DATEDIFF(CURRENT_DATE, created_at) > 365 THEN 'Cliente frecuente'
+    WHEN DATEDIFF(CURRENT_DATE, created_at) > 90  THEN 'Cliente regular'
+    ELSE 'Cliente nuevo'
+  END AS categoria
+FROM usuarios
+ORDER BY dias_como_cliente DESC;
+```
+
+### Análisis de transacciones por mes
+
+```sql
+SELECT
+  YEAR(transaction_date)                           AS anio,
+  MONTH(transaction_date)                          AS mes,
+  DATE_FORMAT(transaction_date, '%M %Y')           AS periodo,
+  COUNT(*)                                         AS num_transacciones,
+  SUM(valor)                                       AS monto_total,
+  AVG(valor)                                       AS monto_promedio
+FROM transacciones
+GROUP BY YEAR(transaction_date), MONTH(transaction_date)
+ORDER BY anio DESC, mes DESC;
+```
+
+---
+
+## Resumen de funciones
+
+| Función | MySQL | PostgreSQL | Descripción |
+|---------|-------|-----------|-------------|
+| Longitud | `LENGTH(str)` | `LENGTH(str)` | Largo en bytes |
+| Mayúsculas | `UPPER(str)` | `UPPER(str)` | Todo en mayúsculas |
+| Minúsculas | `LOWER(str)` | `LOWER(str)` | Todo en minúsculas |
+| Concatenar | `CONCAT(a,b)` | `a \|\| b` o `CONCAT(a,b)` | Unir cadenas |
+| Parte de cadena | `SUBSTRING(s,i,n)` | `SUBSTRING(s,i,n)` | Extraer sub-cadena |
+| Limpiar espacios | `TRIM(str)` | `TRIM(str)` | Quitar espacios |
+| Reemplazar | `REPLACE(s,a,b)` | `REPLACE(s,a,b)` | Sustituir texto |
+| Fecha actual | `CURDATE()` | `CURRENT_DATE` | Solo fecha |
+| Datetime actual | `NOW()` | `NOW()` | Fecha y hora |
+| Año | `YEAR(fecha)` | `EXTRACT(YEAR FROM fecha)` | Extraer año |
+| Mes | `MONTH(fecha)` | `EXTRACT(MONTH FROM fecha)` | Extraer mes |
+| Formatear fecha | `DATE_FORMAT(f, fmt)` | `TO_CHAR(f, fmt)` | Formato legible |
+| Diferencia días | `DATEDIFF(a, b)` | `a - b` (en días) | Días entre fechas |
+| Sumar tiempo | `DATE_ADD(f, INTERVAL n UNIT)` | `f + INTERVAL 'n UNIT'` | Fecha futura |

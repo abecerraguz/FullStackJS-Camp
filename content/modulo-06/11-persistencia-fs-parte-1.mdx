@@ -1,0 +1,263 @@
+---
+titulo: "Persistencia en Archivos con FS (Parte I)"
+descripcion: "Aprende a leer y escribir archivos con el módulo fs de Node.js: métodos síncronos, callbacks y promises, y cuándo usar cada uno."
+tipo: teoria
+duracion: "3h"
+objetivos:
+  - "Usar readFileSync y writeFileSync para operaciones síncronas"
+  - "Manejar operaciones asíncronas con callbacks (readFile, writeFile)"
+  - "Comprender por qué los métodos síncronos son problemáticos en servidores"
+  - "Usar appendFile para agregar contenido a archivos existentes"
+  - "Crear un sistema de registro de eventos (logs) con FS"
+recursos:
+  - nombre: "Node.js — fs module (Documentación oficial)"
+    url: "https://nodejs.org/api/fs.html"
+  - nombre: "Node.js — File System Promises API"
+    url: "https://nodejs.org/api/fs.html#promises-api"
+---
+
+# Persistencia en Archivos con FS (Parte I)
+
+El módulo `fs` (File System) de Node.js permite leer, escribir, eliminar y manipular archivos y directorios. Está disponible de forma nativa, sin instalar nada.
+
+## Tres APIs, misma funcionalidad
+
+Node.js ofrece tres formas de hacer las mismas operaciones:
+
+```javascript
+// 1. Síncrona — bloquea el hilo hasta completar
+import fs from "fs";
+const datos = fs.readFileSync("archivo.txt", "utf-8");
+
+// 2. Asíncrona con callback — no bloquea, notifica al terminar
+fs.readFile("archivo.txt", "utf-8", (err, datos) => {
+  if (err) throw err;
+  console.log(datos);
+});
+
+// 3. Async/await con promises — recomendado en código moderno
+import { readFile } from "fs/promises";
+const datos = await readFile("archivo.txt", "utf-8");
+```
+
+## Métodos síncronos
+
+Los métodos síncronos bloquean completamente el event loop hasta que terminan. **No los uses en servidores web** (bloquean todas las requests mientras se ejecutan), pero son perfectos para scripts y herramientas CLI:
+
+```javascript
+import fs from "fs";
+
+// ── Leer archivo ──────────────────────────────────────────────
+try {
+  const contenido = fs.readFileSync("datos.txt", "utf-8");
+  console.log(contenido);
+} catch (err) {
+  if (err.code === "ENOENT") {
+    console.error("El archivo no existe");
+  } else {
+    throw err;
+  }
+}
+
+// ── Escribir archivo (crea o sobreescribe) ───────────────────
+fs.writeFileSync(
+  "salida.txt",
+  "Contenido del archivo\nSegunda línea",
+  "utf-8"
+);
+
+// ── Agregar al final (append) ─────────────────────────────────
+fs.appendFileSync("log.txt", `${new Date().toISOString()} - Evento\n`);
+
+// ── Verificar si existe ───────────────────────────────────────
+if (fs.existsSync("archivo.txt")) {
+  console.log("El archivo existe");
+}
+
+// ── Eliminar ──────────────────────────────────────────────────
+fs.unlinkSync("temporal.txt");
+
+// ── Leer directorio ───────────────────────────────────────────
+const archivos = fs.readdirSync("./carpeta");
+console.log(archivos); // ['a.txt', 'b.json', ...]
+```
+
+<Callout type="warning">
+En un servidor Express, nunca uses métodos síncronos (`readFileSync`, `writeFileSync`). Bloquean el event loop y dejan al servidor incapaz de atender otras requests mientras se ejecutan.
+</Callout>
+
+## Métodos asíncronos con callbacks
+
+El estilo con callbacks fue la forma original de hacer I/O en Node.js. Sigue el patrón "**error-first callback**":
+
+```javascript
+import fs from "fs";
+
+// El callback siempre recibe (error, resultado)
+fs.readFile("datos.txt", "utf-8", (err, data) => {
+  if (err) {
+    console.error("Error:", err.message);
+    return;
+  }
+  console.log("Contenido:", data);
+});
+
+// Escribir
+fs.writeFile("salida.txt", "Hola mundo", "utf-8", (err) => {
+  if (err) {
+    console.error("Error al escribir:", err.message);
+    return;
+  }
+  console.log("Archivo guardado");
+});
+
+// Eliminar
+fs.unlink("temporal.txt", (err) => {
+  if (err && err.code !== "ENOENT") {
+    console.error("Error:", err.message);
+  }
+});
+```
+
+### El problema del "callback hell"
+
+```javascript
+// ❌ Callbacks anidados — difícil de leer y mantener
+fs.readFile("usuarios.json", "utf-8", (err, data) => {
+  if (err) return console.error(err);
+  const usuarios = JSON.parse(data);
+
+  fs.readFile("config.json", "utf-8", (err2, config) => {
+    if (err2) return console.error(err2);
+    const configuracion = JSON.parse(config);
+
+    fs.writeFile("reporte.json", JSON.stringify({ usuarios, configuracion }, null, 2), "utf-8", (err3) => {
+      if (err3) return console.error(err3);
+      console.log("Reporte guardado");
+    });
+  });
+});
+```
+
+Para evitar esto, usamos promises o async/await (Parte II).
+
+## Trabajar con JSON
+
+El patrón más común es usar archivos JSON como base de datos simple:
+
+```javascript
+import fs from "fs";
+
+const ARCHIVO = "./db/usuarios.json";
+
+// Leer JSON (síncrono, para scripts)
+function leerUsuarios() {
+  try {
+    const raw = fs.readFileSync(ARCHIVO, "utf-8");
+    return raw.trim() ? JSON.parse(raw) : [];
+  } catch (err) {
+    if (err.code === "ENOENT") return []; // El archivo no existe aún
+    throw err;
+  }
+}
+
+// Guardar JSON (síncrono)
+function guardarUsuarios(usuarios) {
+  fs.writeFileSync(
+    ARCHIVO,
+    JSON.stringify(usuarios, null, 2), // Indentación de 2 espacios
+    "utf-8"
+  );
+}
+
+// Uso
+const usuarios = leerUsuarios();
+usuarios.push({ id: Date.now(), nombre: "Ana" });
+guardarUsuarios(usuarios);
+```
+
+## Manipular directorios
+
+```javascript
+import fs from "fs";
+import path from "path";
+
+// Crear directorio
+fs.mkdirSync("./uploads", { recursive: true }); // recursive: no falla si ya existe
+
+// Leer contenido de un directorio
+const archivos = fs.readdirSync("./uploads");
+console.log(archivos);
+
+// Información de un archivo
+const stat = fs.statSync("./datos.txt");
+console.log("Tamaño:", stat.size, "bytes");
+console.log("Modificado:", stat.mtime);
+console.log("¿Es directorio?", stat.isDirectory());
+
+// Renombrar o mover
+fs.renameSync("viejo.txt", "nuevo.txt");
+fs.renameSync("archivo.txt", "./backup/archivo.txt"); // También mueve
+```
+
+## Proyecto: Sistema de registro de eventos
+
+```javascript
+// logger.js — Sistema de logs persistentes
+import fs from "fs";
+import path from "path";
+
+const LOG_FILE = "./logs/eventos.log";
+const MAX_LOGS = 100; // Límite de entradas
+
+// Asegurar que existe la carpeta de logs
+fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
+
+export function registrarEvento(tipo, mensaje) {
+  const linea = `[${new Date().toISOString()}] [${tipo.toUpperCase()}] ${mensaje}\n`;
+  fs.appendFileSync(LOG_FILE, linea, "utf-8");
+  console.log(linea.trim());
+}
+
+export function obtenerUltimosLogs(n = 10) {
+  if (!fs.existsSync(LOG_FILE)) return [];
+
+  const contenido = fs.readFileSync(LOG_FILE, "utf-8");
+  const lineas = contenido.trim().split("\n").filter(Boolean);
+  return lineas.slice(-n); // Últimas n líneas
+}
+
+export function limpiarLogs() {
+  // Mantener solo los últimos MAX_LOGS registros
+  if (!fs.existsSync(LOG_FILE)) return;
+
+  const contenido = fs.readFileSync(LOG_FILE, "utf-8");
+  const lineas = contenido.trim().split("\n").filter(Boolean);
+
+  if (lineas.length > MAX_LOGS) {
+    const reducidas = lineas.slice(-MAX_LOGS);
+    fs.writeFileSync(LOG_FILE, reducidas.join("\n") + "\n", "utf-8");
+  }
+}
+```
+
+```javascript
+// Uso en la aplicación
+import { registrarEvento, obtenerUltimosLogs } from "./logger.js";
+
+registrarEvento("INFO", "Servidor iniciado en puerto 3000");
+registrarEvento("ERROR", "Fallo al conectar a la base de datos");
+registrarEvento("WARN", "Intento de login fallido para ana@email.com");
+
+console.log("\nÚltimos 5 eventos:");
+obtenerUltimosLogs(5).forEach((log) => console.log(log));
+```
+
+## Resumen: cuándo usar cada enfoque
+
+| Situación | Recomendación |
+|-----------|---------------|
+| Script CLI, herramienta de línea de comandos | Síncrono (`readFileSync`) |
+| Servidor Express (I/O en rutas) | Async/await con `fs/promises` |
+| Código legacy, mantenimiento | Callbacks (ya que está escrito así) |
+| Código nuevo en servidores | **Siempre async/await** |

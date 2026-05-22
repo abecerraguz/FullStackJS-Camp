@@ -1,0 +1,371 @@
+---
+titulo: "Proyecto Final: FactorDash"
+tipo: proyecto
+duracion: 6h
+objetivos:
+  - Integrar React, Next.js 15, TypeScript y Zustand en un dashboard completo
+  - Proteger rutas con middleware de Next.js usando JWT en cookies
+  - Contenedorizar la aplicación con Docker Compose (frontend + API + base de datos)
+  - Configurar un pipeline CI/CD completo con GitHub Actions
+recursos:
+  - { nombre: "Next.js App Router Docs", url: "https://nextjs.org/docs/app" }
+  - { nombre: "Zustand Docs", url: "https://zustand.docs.pmnd.rs/" }
+  - { nombre: "Docker Compose Docs", url: "https://docs.docker.com/compose/" }
+  - { nombre: "GitHub Actions Docs", url: "https://docs.github.com/en/actions" }
+---
+
+# Proyecto Final: FactorDash
+
+**FactorDash** es el proyecto integrador del Módulo IX. Conecta todos los conceptos del módulo —React, TypeScript, Next.js, Zustand, Docker, CI/CD y GCP— en una aplicación profesional completa: un dashboard de gestión de catálogo de guitarras que consume el backend REST + JWT del Módulo VIII.
+
+<Callout type="tip">
+Este proyecto es el cierre del ciclo **Full Stack JavaScript**. El backend es la API de guitarras que construiste en el Módulo VIII. Si aún no está terminada, complétala antes de iniciar este proyecto.
+</Callout>
+
+## Stack del proyecto
+
+| Capa | Tecnología | Versión |
+|---|---|---|
+| **Frontend** | Next.js (App Router) | 15 |
+| **UI Library** | React | 19 |
+| **Lenguaje** | TypeScript | 5 |
+| **Estilos** | Tailwind CSS | 4 |
+| **Estado global** | Zustand | 5 |
+| **Backend** | Node.js + Express (Módulo VIII) | — |
+| **Base de datos** | PostgreSQL (Módulo VIII) | 16 |
+| **Contenedores** | Docker + Docker Compose | — |
+| **CI/CD** | GitHub Actions | — |
+| **Deploy** | GCP Cloud Run | — |
+
+## Funcionalidades
+
+### Para todos los usuarios autenticados
+- Login con JWT (access token en cookie HttpOnly + refresh token)
+- Dashboard con métricas del catálogo (total, disponibles, sin stock)
+- Listado de guitarras con filtros por tipo, búsqueda por nombre y paginación
+- Vista de detalle de cada guitarra
+
+### Solo rol `admin`
+- Crear nueva guitarra con subida de imagen
+- Editar guitarra existente
+- Eliminar guitarra con confirmación
+
+## Estructura del proyecto
+
+```
+factordash/
+├── frontend/                    ← Next.js 15 App Router
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── layout.tsx
+│   │   │   ├── page.tsx                ← redirige a /dashboard o /login
+│   │   │   ├── (auth)/
+│   │   │   │   ├── login/page.tsx
+│   │   │   │   └── layout.tsx
+│   │   │   └── dashboard/
+│   │   │       ├── layout.tsx          ← sidebar + navbar
+│   │   │       ├── page.tsx            ← métricas
+│   │   │       ├── guitarras/
+│   │   │       │   ├── page.tsx        ← tabla + filtros
+│   │   │       │   ├── nueva/page.tsx
+│   │   │       │   └── [id]/page.tsx   ← detalle / editar
+│   │   │       └── perfil/page.tsx
+│   │   ├── components/
+│   │   │   ├── layout/
+│   │   │   │   ├── Sidebar.tsx
+│   │   │   │   └── Navbar.tsx
+│   │   │   └── guitar/
+│   │   │       ├── GuitarTable.tsx
+│   │   │       ├── GuitarForm.tsx
+│   │   │       └── GuitarFilter.tsx
+│   │   ├── store/
+│   │   │   ├── useAuthStore.ts         ← usuario + tokens + persist
+│   │   │   ├── useGuitarStore.ts       ← items + CRUD async
+│   │   │   └── useUiStore.ts           ← sidebar open + tema
+│   │   ├── lib/
+│   │   │   └── api.ts                  ← cliente HTTP con refresh automático
+│   │   └── types/
+│   │       └── index.ts                ← interfaces compartidas
+│   ├── middleware.ts                   ← protección de rutas
+│   ├── next.config.ts
+│   ├── Dockerfile
+│   └── .dockerignore
+│
+├── api/                         ← Backend del Módulo VIII
+│   ├── src/
+│   │   └── ...
+│   └── Dockerfile
+│
+├── docker-compose.yml           ← orquesta frontend + api + db
+├── .env.example
+├── .github/
+│   └── workflows/
+│       └── ci-cd.yml
+└── README.md
+```
+
+## Guía de implementación paso a paso
+
+### Paso 1 — Inicializar el proyecto Next.js
+
+```bash
+npx create-next-app@latest frontend \
+  --typescript \
+  --tailwind \
+  --app \
+  --src-dir \
+  --import-alias "@/*"
+
+cd frontend
+npm install zustand
+```
+
+### Paso 2 — Definir los tipos TypeScript
+
+```ts
+// src/types/index.ts
+export interface Guitarra {
+  id: number;
+  nombre: string;
+  tipo: 'electrica' | 'acustica' | 'clasica';
+  disponible: boolean;
+  precio: number;
+  imagen?: string;
+}
+
+export interface User {
+  id: number;
+  nombre: string;
+  email: string;
+  rol: 'admin' | 'usuario';
+}
+
+export interface LoginResponse {
+  user: User;
+  accessToken: string;
+}
+
+export interface PaginatedResponse<T> {
+  items: T[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+```
+
+### Paso 3 — Crear el cliente HTTP con refresh automático
+
+```ts
+// src/lib/api.ts
+import { useAuthStore } from '@/store/useAuthStore';
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+
+async function apiRequest<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const { accessToken } = useAuthStore.getState();
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      ...options.headers,
+    },
+  });
+
+  // Intento de refresh automático al recibir 401
+  if (res.status === 401) {
+    const refreshed = await tryRefreshToken();
+    if (refreshed) {
+      // Reintentar la petición original con el nuevo token
+      const { accessToken: newToken } = useAuthStore.getState();
+      const retryRes = await fetch(`${BASE_URL}${path}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${newToken}`,
+          ...options.headers,
+        },
+      });
+      if (!retryRes.ok) throw new Error(`HTTP ${retryRes.status}`);
+      return retryRes.json() as Promise<T>;
+    } else {
+      useAuthStore.getState().logout();
+      throw new Error('Sesión expirada');
+    }
+  }
+
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
+async function tryRefreshToken(): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include', // envía la cookie refreshToken
+    });
+    if (!res.ok) return false;
+    const { accessToken } = await res.json();
+    useAuthStore.getState().setAccessToken(accessToken);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Funciones de la API de guitarras
+export const api = {
+  guitarras: {
+    getAll: (params?: Record<string, string>) => {
+      const query = params ? '?' + new URLSearchParams(params).toString() : '';
+      return apiRequest<{ items: import('@/types').Guitarra[]; meta: { total: number; page: number; limit: number; totalPages: number } }>(`/api/guitarras${query}`);
+    },
+    getById: (id: number) =>
+      apiRequest<import('@/types').Guitarra>(`/api/guitarras/${id}`),
+    create: (data: FormData) =>
+      apiRequest<import('@/types').Guitarra>('/api/guitarras', {
+        method: 'POST',
+        body: data,
+        headers: {}, // dejar vacío para que fetch asigne Content-Type automático con FormData
+      }),
+    update: (id: number, data: Partial<import('@/types').Guitarra>) =>
+      apiRequest<import('@/types').Guitarra>(`/api/guitarras/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    remove: (id: number) =>
+      apiRequest<void>(`/api/guitarras/${id}`, { method: 'DELETE' }),
+  },
+  auth: {
+    login: (email: string, password: string) =>
+      apiRequest<import('@/types').LoginResponse>('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+        credentials: 'include',
+      }),
+    logout: () =>
+      apiRequest<void>('/api/auth/logout', { method: 'POST', credentials: 'include' }),
+  },
+};
+```
+
+### Paso 4 — Crear los stores de Zustand
+
+Los stores de Auth, Guitar y UI se detallan en el tema [03-zustand](../03-zustand). Implementa `useAuthStore` con `persist`, `useGuitarStore` con acciones async y `useUiStore` para el sidebar.
+
+### Paso 5 — Middleware de Next.js
+
+```ts
+// middleware.ts (raíz del proyecto, fuera de src/)
+import { NextRequest, NextResponse } from 'next/server';
+
+const PUBLIC_PATHS = ['/login'];
+
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+    return NextResponse.next();
+  }
+
+  const token = request.cookies.get('accessToken')?.value;
+
+  if (!token) {
+    const url = new URL('/login', request.url);
+    url.searchParams.set('redirect', pathname);
+    return NextResponse.redirect(url);
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+};
+```
+
+### Paso 6 — Layout del Dashboard
+
+```tsx
+// src/app/dashboard/layout.tsx
+import { Sidebar } from '@/components/layout/Sidebar';
+import { Navbar } from '@/components/layout/Navbar';
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex h-screen bg-zinc-950 text-white">
+      <Sidebar />
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <Navbar />
+        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+      </div>
+    </div>
+  );
+}
+```
+
+### Pasos 7–10 — Tabla de Guitarras, CRUD, Docker y CI/CD
+
+Construye la `GuitarTable` usando el store de Zustand, agrega formularios controlados para crear y editar, dockeriza con los `Dockerfile` del tema [05-docker](../05-docker) y configura el pipeline CI/CD del tema [06-cicd](../06-cicd).
+
+## Checklist del entregable
+
+Antes de enviar el proyecto, verifica que cumple todos estos puntos:
+
+```
+ESTRUCTURA
+□ Proyecto Next.js con App Router y TypeScript
+□ Estructura de carpetas organizada (app/, components/, store/, lib/, types/)
+□ .env.example con todas las variables requeridas
+
+FUNCIONALIDADES
+□ Login con JWT y redirección a /dashboard
+□ Logout que limpia el store y la cookie
+□ Dashboard con métricas (total, disponibles, sin stock)
+□ Tabla de guitarras con paginación
+□ Filtros por tipo y búsqueda por nombre
+□ CRUD completo (solo visible para rol admin)
+□ Subida de imagen de portada en el formulario
+
+ESTADO Y ARQUITECTURA
+□ useAuthStore con persist
+□ useGuitarStore con acciones async
+□ Middleware de Next.js protegiendo /dashboard
+□ Cliente HTTP con refresh automático de token
+
+DOCKER
+□ Dockerfile multi-stage para el frontend
+□ docker-compose.yml con frontend + api + db
+□ .dockerignore configurado
+□ docker compose up --build levanta el stack completo
+
+CI/CD
+□ .github/workflows/ci-cd.yml con lint → test → build → push → deploy
+□ Secretos de GitHub configurados (al menos con valores de ejemplo)
+
+DOCUMENTACIÓN
+□ README.md con instrucciones de instalación local
+□ README.md con descripción del pipeline CI/CD
+□ Descripción del proyecto en el README
+```
+
+## Criterios de evaluación
+
+| Criterio | Peso |
+|---|---|
+| Funcionalidades implementadas correctamente | 35% |
+| Calidad del código TypeScript (tipos correctos, sin `any`) | 25% |
+| Docker y Docker Compose funcionales | 20% |
+| Pipeline CI/CD configurado | 15% |
+| Documentación (README) | 5% |

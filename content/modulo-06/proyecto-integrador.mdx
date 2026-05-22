@@ -1,0 +1,36 @@
+---
+titulo: "Proyecto integrador"
+tipo: proyecto
+duracion: 8h
+objetivos:
+  - Construir una REST API Express con autenticación por sesiones
+  - Implementar persistencia en archivos JSON con fs/promises
+  - Renderizar vistas server-side con motor de plantillas Handlebars
+  - Configurar el servidor para producción con variables de entorno y PM2 cluster
+---
+
+# Proyecto integrador
+
+## Servidor Backend con Node.js y Express
+
+Construir un **servidor backend completo** con Node.js y Express que integre todos los conceptos del módulo: REST API, autenticación por sesiones, persistencia en archivos y vistas server-side, configurado para producción.
+
+**Dataset inicial:** [tareas.json](/data/tareas.json) — 10 tareas con `id`, `titulo`, `descripcion`, `completada` y `fechaCreacion` para sembrar el archivo de persistencia.
+
+**Paso a paso**
+
+1. Inicializa el proyecto (`npm init`) e instala las dependencias: `express`, `express-session`, `express-handlebars`, `dotenv`.
+2. Crea el archivo `.env` con `PORT`, `SESSION_SECRET` y `NODE_ENV`; añade `.env` al `.gitignore`.
+3. Implementa el **middleware de logging** (método + ruta + tiempo) y el **middleware global de errores** (4 parámetros).
+4. Crea la **autenticación**: rutas `POST /auth/login` y `POST /auth/logout` con `express-session`, y middleware `requireAuth` para proteger rutas privadas.
+5. Implementa el **CRUD de tareas** con persistencia en archivo JSON usando `fs/promises`: `GET /api/tareas`, `POST /api/tareas`, `PUT /api/tareas/:id`, `DELETE /api/tareas/:id`.
+6. Agrega al menos **2 vistas Handlebars**: una pública (lista de tareas) y una privada (panel de administración).
+7. Crea `ecosystem.config.js` y documenta los comandos PM2 para ejecutar el servidor en modo **cluster** con 2 instancias.
+
+**Entregable**
+
+Sube el **link del repositorio GitHub** que contenga:
+- El proyecto completo con estructura de carpetas clara (`routes/`, `controllers/`, `views/`, `public/`)
+- Archivo `.env.sample` con las variables requeridas (sin valores reales)
+- `README.md` con instrucciones de instalación, variables de entorno y ejecución
+- El repositorio **no debe incluir** `node_modules/` ni el archivo `.env`

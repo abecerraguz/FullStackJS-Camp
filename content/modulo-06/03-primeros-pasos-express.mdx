@@ -1,0 +1,245 @@
+---
+titulo: "Primeros Pasos con Express"
+descripcion: "Crea tu primer servidor Express, define rutas básicas y envía respuestas HTML y JSON."
+tipo: practica
+duracion: "1h"
+objetivos:
+  - "Instalar y configurar Express en un proyecto nuevo"
+  - "Definir rutas GET con app.get()"
+  - "Enviar respuestas HTML y JSON"
+  - "Usar parámetros de ruta con req.params"
+  - "Levantar el servidor con app.listen()"
+recursos:
+  - nombre: "Express — Guía de inicio rápido"
+    url: "https://expressjs.com/es/starter/hello-world.html"
+---
+
+# Primeros Pasos con Express
+
+Vamos a construir nuestro primer servidor Express desde cero, paso a paso.
+
+## Setup inicial
+
+```bash
+mkdir mi-servidor-express
+cd mi-servidor-express
+npm init -y
+npm install express
+npm install --save-dev nodemon
+```
+
+Edita `package.json` para agregar `type` y el script `dev`:
+
+```json
+{
+  "name": "mi-servidor-express",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "dev:native": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
+```
+
+<Callout type="tip">
+**`node --watch` — alternativa nativa de Node.js (v18.11+, estable en v22+)**
+
+Desde Node v18.11 puedes reiniciar el servidor automáticamente sin instalar `nodemon`. Úsalo directamente: `node --watch server.js`, o agrega `"dev:native": "node --watch server.js"` en tus scripts de `package.json`.
+
+`nodemon` sigue siendo útil cuando necesitas ignorar carpetas específicas (`--ignore`), ejecutar scripts pre/post-reinicio o trabajar con proyectos que usen versiones antiguas de Node.
+</Callout>
+
+## El servidor más simple
+
+```javascript
+// server.js
+import express from "express";
+
+const app = express();
+
+app.get("/", (req, res) => {
+  res.send("<h1>¡Hola desde Express!</h1>");
+});
+
+app.listen(3000, () => {
+  console.log("Servidor corriendo en http://localhost:3000");
+});
+```
+
+```bash
+npm run dev
+# Servidor corriendo en http://localhost:3000
+```
+
+<Callout type="tip">
+Con **nodemon** (o `node --watch` de forma nativa), cada vez que guardes cambios en tu código el servidor se reinicia automáticamente.
+</Callout>
+
+## Tipos de respuesta
+
+Express ofrece varios métodos para responder:
+
+```javascript
+// Respuesta HTML (string)
+app.get("/html", (req, res) => {
+  res.send("<h1>Respuesta HTML</h1><p>Párrafo de ejemplo</p>");
+});
+
+// Respuesta JSON
+app.get("/api/datos", (req, res) => {
+  res.json({
+    mensaje: "Respuesta en formato JSON",
+    fecha: new Date().toISOString(),
+    activo: true,
+  });
+});
+
+// Respuesta con código de estado
+app.get("/creado", (req, res) => {
+  res.status(201).json({ mensaje: "Recurso creado" });
+});
+
+// Redirigir
+app.get("/ir-a-inicio", (req, res) => {
+  res.redirect("/");
+});
+
+// Enviar un archivo
+app.get("/descargar", (req, res) => {
+  res.download("./archivos/documento.pdf");
+});
+```
+
+## Rutas con parámetros
+
+Los parámetros de ruta se definen con `:nombre` y se leen de `req.params`:
+
+```javascript
+// Parámetro simple
+app.get("/usuarios/:id", (req, res) => {
+  const { id } = req.params;
+  res.json({ mensaje: `Mostrando usuario con ID: ${id}` });
+});
+
+// Múltiples parámetros
+app.get("/modulos/:modulo/temas/:tema", (req, res) => {
+  const { modulo, tema } = req.params;
+  res.json({
+    modulo,
+    tema,
+    ruta: `/${modulo}/${tema}`,
+  });
+});
+```
+
+## Query strings
+
+Las query strings (`?clave=valor`) se leen de `req.query`:
+
+```javascript
+// GET /buscar?nombre=ana&activo=true
+app.get("/buscar", (req, res) => {
+  const { nombre, activo } = req.query;
+  res.json({
+    filtros: { nombre, activo },
+    mensaje: `Buscando usuarios con nombre=${nombre}`,
+  });
+});
+```
+
+## Servidor completo con múltiples rutas
+
+```javascript
+// server.js — Versión completa
+import express from "express";
+
+const app = express();
+const PORT = 3000;
+
+// Lista de usuarios en memoria
+const usuarios = [
+  { id: 1, nombre: "Ana García", ciudad: "Santiago" },
+  { id: 2, nombre: "Pedro López", ciudad: "Valparaíso" },
+  { id: 3, nombre: "María Soto", ciudad: "Santiago" },
+];
+
+// Página de inicio
+app.get("/", (req, res) => {
+  res.send(`
+    <h1>API de Usuarios</h1>
+    <ul>
+      <li><a href="/usuarios">GET /usuarios</a></li>
+      <li><a href="/usuarios/1">GET /usuarios/1</a></li>
+      <li><a href="/usuarios?ciudad=Santiago">GET /usuarios?ciudad=Santiago</a></li>
+    </ul>
+  `);
+});
+
+// GET todos (con filtro opcional por ciudad)
+app.get("/usuarios", (req, res) => {
+  const { ciudad } = req.query;
+
+  if (ciudad) {
+    const filtrados = usuarios.filter(
+      (u) => u.ciudad.toLowerCase() === ciudad.toLowerCase()
+    );
+    return res.json(filtrados);
+  }
+
+  res.json(usuarios);
+});
+
+// GET por ID
+app.get("/usuarios/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const usuario = usuarios.find((u) => u.id === id);
+
+  if (!usuario) {
+    return res.status(404).send(`
+      <h2 style="color:red">Usuario ${id} no encontrado</h2>
+      <a href="/usuarios">← Volver a la lista</a>
+    `);
+  }
+
+  res.json(usuario);
+});
+
+// Ruta no encontrada (siempre al final)
+app.use((req, res) => {
+  res.status(404).send(`
+    <h2 style="color:red">404 — Página no encontrada</h2>
+    <p>La URL <strong>${req.url}</strong> no existe.</p>
+    <a href="/">← Ir al inicio</a>
+  `);
+});
+
+app.listen(PORT, () => {
+  console.log(`Servidor en http://localhost:${PORT}`);
+});
+```
+
+## Probando el servidor
+
+```bash
+# En el navegador
+http://localhost:3000/
+http://localhost:3000/usuarios
+http://localhost:3000/usuarios/2
+http://localhost:3000/usuarios?ciudad=Santiago
+
+# Con curl
+curl http://localhost:3000/api/datos
+curl http://localhost:3000/usuarios/99   # → 404
+```
+
+<Callout type="info">
+Instala la extensión **REST Client** o usa **Postman** para probar rutas POST, PUT y DELETE cómodamente desde VS Code.
+</Callout>

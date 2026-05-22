@@ -1,0 +1,206 @@
+---
+titulo: "Despliegue en GCP Cloud Run"
+tipo: practica
+duracion: 6h
+objetivos:
+  - Configurar los servicios GCP necesarios para el despliegue del proyecto
+  - Subir imágenes Docker a GCP Artifact Registry
+  - Desplegar en Cloud Run con variables de entorno y secretos de Secret Manager
+  - Entender la arquitectura de producción con Cloud Run, Cloud SQL y CDN
+recursos:
+  - { nombre: "Cloud Run Quickstart", url: "https://cloud.google.com/run/docs/quickstarts" }
+  - { nombre: "Artifact Registry Docs", url: "https://cloud.google.com/artifact-registry/docs" }
+  - { nombre: "Secret Manager Docs", url: "https://cloud.google.com/secret-manager/docs" }
+  - { nombre: "GCP Free Tier", url: "https://cloud.google.com/free" }
+---
+
+# Despliegue en GCP Cloud Run
+
+Google Cloud Platform (GCP) ofrece un ecosistema completo para desplegar aplicaciones contenedorizadas. **Cloud Run** es el servicio serverless que ejecuta contenedores Docker sin que debas gestionar servidores: escala automáticamente desde cero y solo cobras por el tiempo de CPU utilizado.
+
+## Servicios GCP usados en FactorDash
+
+| Servicio | Rol | Costo estimado |
+|---|---|---|
+| **Cloud Run** | Ejecuta los contenedores del frontend y la API | ~$0 en Free Tier (primeras 2M peticiones/mes gratis) |
+| **Artifact Registry** | Almacena las imágenes Docker | ~$0.10/GB al mes |
+| **Cloud SQL** | Base de datos PostgreSQL gestionada | ~$10/mes (instancia más pequeña) |
+| **Secret Manager** | Almacena secretos (JWT_SECRET, DATABASE_URL) | ~$0.06 por 10K accesos |
+| **Cloud Storage** | Almacena imágenes subidas por usuarios | ~$0.02/GB al mes |
+| **Cloud Load Balancing** | Dominio personalizado + HTTPS | ~$18/mes (IP estática + regla) |
+
+<Callout type="tip">
+**GCP Free Tier**: Cloud Run incluye 2 millones de peticiones gratis al mes. Para proyectos educativos y de portafolio el costo suele ser $0 si usas el plan de cuenta gratuita de 90 días con $300 de crédito.
+</Callout>
+
+## Configuración inicial del proyecto GCP
+
+```bash
+# 1. Instalar Google Cloud CLI
+# macOS:
+brew install google-cloud-sdk
+
+# 2. Iniciar sesión
+gcloud auth login
+
+# 3. Seleccionar o crear proyecto
+gcloud projects create factordash-prod --name="FactorDash Production"
+gcloud config set project factordash-prod
+
+# 4. Habilitar los servicios necesarios
+gcloud services enable \
+  run.googleapis.com \
+  artifactregistry.googleapis.com \
+  cloudsql.googleapis.com \
+  secretmanager.googleapis.com \
+  cloudbuild.googleapis.com
+
+# 5. Crear repositorio en Artifact Registry
+gcloud artifacts repositories create factordash \
+  --repository-format=docker \
+  --location=us-central1 \
+  --description="Imágenes Docker de FactorDash"
+
+# 6. Configurar Docker para autenticar con Artifact Registry
+gcloud auth configure-docker us-central1-docker.pkg.dev
+```
+
+## Subir imágenes a Artifact Registry
+
+```bash
+# Definir variables
+PROJECT_ID="factordash-prod"
+REGION="us-central1"
+REPO="factordash"
+
+# Build y push de la API
+docker build -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/factordash-api:latest ./api
+docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/factordash-api:latest
+
+# Build y push del Frontend
+docker build \
+  --build-arg NEXT_PUBLIC_API_URL=https://api-factordash-HASH-uc.a.run.app \
+  -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/factordash-frontend:latest \
+  ./frontend
+docker push ${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/factordash-frontend:latest
+```
+
+## Configurar secretos en Secret Manager
+
+```bash
+# Crear secretos (los valores reales se pasan por stdin o archivo)
+echo -n "tu-jwt-secret-aleatorio-largo" | \
+  gcloud secrets create JWT_SECRET --data-file=-
+
+echo -n "postgresql://usuario:password@/factordash?host=/cloudsql/factordash-prod:us-central1:factordash-db" | \
+  gcloud secrets create DATABASE_URL --data-file=-
+
+echo -n "tu-refresh-secret-aleatorio" | \
+  gcloud secrets create JWT_REFRESH_SECRET --data-file=-
+
+# Listar secretos creados
+gcloud secrets list
+```
+
+## Desplegar en Cloud Run
+
+```bash
+# Desplegar la API
+gcloud run deploy factordash-api \
+  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/factordash-api:latest \
+  --region=${REGION} \
+  --platform=managed \
+  --allow-unauthenticated \
+  --port=4000 \
+  --memory=512Mi \
+  --cpu=1 \
+  --min-instances=0 \
+  --max-instances=5 \
+  --set-env-vars="NODE_ENV=production" \
+  --set-secrets="DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,JWT_REFRESH_SECRET=JWT_REFRESH_SECRET:latest" \
+  --add-cloudsql-instances=${PROJECT_ID}:${REGION}:factordash-db
+
+# Obtener la URL de la API desplegada
+API_URL=$(gcloud run services describe factordash-api \
+  --region=${REGION} --format="value(status.url)")
+echo "API URL: $API_URL"
+
+# Desplegar el Frontend (con la URL de la API como build arg)
+gcloud run deploy factordash-frontend \
+  --image=${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/factordash-frontend:latest \
+  --region=${REGION} \
+  --platform=managed \
+  --allow-unauthenticated \
+  --port=3000 \
+  --memory=1Gi \
+  --cpu=1 \
+  --min-instances=0 \
+  --max-instances=10 \
+  --set-env-vars="NODE_ENV=production"
+```
+
+## Arquitectura de producción
+
+```
+Usuario
+  │
+  ▼ HTTPS
+Cloud Load Balancer
+  ├── /           → Cloud CDN → Cloud Run (frontend)
+  └── /api/*      → Cloud Run (API)
+                        │
+                        ├── Cloud SQL (PostgreSQL)
+                        ├── Cloud Storage (imágenes subidas)
+                        └── Secret Manager (credenciales)
+```
+
+**Beneficios de esta arquitectura:**
+
+- **Scale to zero**: cuando no hay tráfico, Cloud Run reduce las instancias a 0 y el costo es $0.
+- **Scale automático**: ante picos de tráfico, Cloud Run levanta nuevas instancias en segundos.
+- **Sin gestión de servidores**: no hay que parchear OS, gestionar SSH ni configurar Nginx.
+- **HTTPS automático**: Cloud Run provee certificados TLS gestionados.
+
+<Callout type="warning">
+**Cold start**: cuando Cloud Run escala desde cero, la primera petición puede tardar 1–3 segundos mientras arranca el contenedor. Para producción con SLA estricto, usa `--min-instances=1` para mantener siempre una instancia caliente (agrega costo base).
+</Callout>
+
+## Variables de entorno y secretos
+
+```bash
+# Ver variables configuradas en un servicio
+gcloud run services describe factordash-api \
+  --region=us-central1 \
+  --format="yaml(spec.template.spec.containers[0].env)"
+
+# Actualizar una variable de entorno
+gcloud run services update factordash-api \
+  --region=us-central1 \
+  --set-env-vars="LOG_LEVEL=debug"
+
+# Actualizar el valor de un secreto
+echo -n "nuevo-valor-secreto" | \
+  gcloud secrets versions add JWT_SECRET --data-file=-
+# Cloud Run tomará la nueva versión automáticamente si usas ":latest"
+```
+
+## Dominio personalizado
+
+```bash
+# Vincular dominio personalizado (requiere Cloud Load Balancing)
+gcloud run domain-mappings create \
+  --service=factordash-frontend \
+  --domain=factordash.tudominio.com \
+  --region=us-central1
+
+# Verificar el mapeo y obtener los registros DNS a configurar
+gcloud run domain-mappings describe \
+  --domain=factordash.tudominio.com \
+  --region=us-central1
+```
+
+## Ejercicios propuestos
+
+1. Crea un proyecto GCP y habilita los servicios necesarios usando los comandos de esta guía.
+2. Sube la imagen de la API a Artifact Registry y despliégala en Cloud Run. Verifica que `GET /api/guitarras` responde desde la URL pública.
+3. Configura el secreto `JWT_SECRET` en Secret Manager y referéncialo en el servicio de Cloud Run. Verifica en los logs que la app inicia sin errores de configuración.

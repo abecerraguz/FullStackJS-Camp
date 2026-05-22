@@ -1,0 +1,42 @@
+---
+titulo: "Node.js + PostgreSQL"
+descripcion: "Conexión a PostgreSQL desde Node.js, patrón MVC, transacciones y ORM con Sequelize."
+modulo: 7
+---
+
+# Módulo VII — Node.js + PostgreSQL
+
+En este módulo integrarás **Node.js con PostgreSQL** usando el driver oficial `pg`. Empezarás con una conexión simple y avanzarás hasta una arquitectura **MVC** completa con manejo robusto de errores, transacciones ACID y ORM con Sequelize.
+
+## ¿Qué aprenderás?
+
+- **Conexión a PostgreSQL** — `pg` (node-postgres), Pool de conexiones y variables de entorno con `dotenv`.
+- **Consultas seguras** — Parámetros posicionales (`$1, $2`) para prevenir SQL injection.
+- **Arquitectura MVC** — Separación en Modelos, Controladores y Rutas con Express.
+- **Transacciones** — `BEGIN`, `COMMIT`, `ROLLBACK` y patrón de reintento con backoff exponencial.
+- **Cursores** — Lectura eficiente de grandes volúmenes de datos con `pg-cursor`.
+- **Sequelize ORM** — Modelos, validaciones, asociaciones y sincronización automática de esquema.
+
+## Proyecto integrador
+
+### API REST Alke Wallet
+
+Desarrollar la **API REST de Alke Wallet** con Node.js y PostgreSQL, aplicando arquitectura MVC, Pool de conexiones encapsulado, transacciones ACID y ORM con Sequelize.
+
+**Paso a paso**
+
+1. Crea la base de datos `alke_wallet` en PostgreSQL con las tablas `usuarios` y `transacciones` (puedes usar el script del Módulo V como base).
+2. Implementa la clase `ConexionDB` con Pool privado (`#pool`), lógica de reintento al arrancar y listener de errores pasivos del pool.
+3. Construye la **arquitectura MVC**: carpetas `routes/`, `controllers/` y `models/` para el recurso `usuarios`.
+4. Implementa el **CRUD de usuarios** con consultas parametrizadas: `GET /api/usuarios`, `POST /api/usuarios`, `PUT /api/usuarios/:id`, `DELETE /api/usuarios/:id`.
+5. Agrega el endpoint `POST /api/transferencias` con transacción `BEGIN / FOR UPDATE / COMMIT / ROLLBACK` que valide saldo suficiente antes de transferir.
+6. Enriquece los errores con códigos PostgreSQL (`23505`, `23503`) mapeados a HTTP status codes correctos y configurar el middleware global de errores en Express.
+7. *(Opcional avanzado)* Define los modelos `Usuario` y `Publicacion` con **Sequelize**, configura `hasMany / belongsTo` y sincroniza el esquema con `db.sync({ alter: true })`.
+
+**Entregable**
+
+Sube el **link del repositorio GitHub** que contenga:
+- Proyecto completo con estructura MVC
+- `.env.sample` con todas las variables requeridas (sin credenciales reales)
+- `README.md` con instrucciones de configuración de PostgreSQL, instalación y ejecución
+- El repositorio **no debe incluir** `node_modules/` ni el archivo `.env` con credenciales

@@ -1,0 +1,232 @@
+---
+titulo: "Manipulación de Imágenes con Jimp"
+descripcion: "Aprende a procesar imágenes en Node.js con la librería Jimp: redimensionar, aplicar filtros y construir herramientas CLI para procesamiento masivo."
+tipo: practica
+duracion: "2h"
+objetivos:
+  - "Instalar y configurar Jimp en un proyecto Node.js"
+  - "Leer imágenes desde archivo local o URL remota"
+  - "Aplicar transformaciones: resize, crop, greyscale, blur, rotate"
+  - "Encadenar múltiples operaciones sobre una imagen"
+  - "Construir una CLI de procesamiento de imágenes con process.argv"
+recursos:
+  - nombre: "Jimp — Documentación y GitHub"
+    url: "https://github.com/jimp-dev/jimp"
+  - nombre: "Jimp — npm"
+    url: "https://www.npmjs.com/package/jimp"
+---
+
+# Manipulación de Imágenes con Jimp
+
+**Jimp** (JavaScript Image Manipulation Program) es una librería 100% JavaScript para Node.js que permite leer, transformar y guardar imágenes sin depender de librerías nativas del sistema operativo.
+
+## Instalación
+
+```bash
+npm install jimp
+```
+
+## Operaciones básicas
+
+```javascript
+// index.js
+import { Jimp } from "jimp";
+
+async function procesarImagen() {
+  // Leer una imagen (archivo local o URL)
+  const imagen = await Jimp.read("./input/foto.jpg");
+
+  // Redimensionar manteniendo proporción
+  imagen.resize({ w: 800 }); // Solo ancho → alto se ajusta automáticamente
+  // imagen.resize({ h: 600 }); // Solo alto
+  // imagen.resize({ w: 800, h: 600 }); // Ambos (puede distorsionar)
+
+  // Aplicar filtros
+  imagen.greyscale();    // Escala de grises
+  imagen.blur(3);        // Desenfoque (valor: 1-100)
+  imagen.brightness(0.2); // Brillo (-1 a 1)
+  imagen.contrast(0.1);   // Contraste (-1 a 1)
+
+  // Rotar
+  imagen.rotate(90);   // En grados
+
+  // Guardar
+  await imagen.write("./output/foto-procesada.jpg");
+  console.log("✓ Imagen procesada y guardada");
+}
+
+procesarImagen();
+```
+
+## Lectura desde URL remota
+
+```javascript
+import { Jimp } from "jimp";
+
+const url = "https://picsum.photos/800/600";
+
+const imagen = await Jimp.read(url);
+console.log(`Dimensiones: ${imagen.width}x${imagen.height}`);
+await imagen.write("./descargada.jpg");
+```
+
+## Crop (recorte)
+
+```javascript
+// crop(x, y, width, height)
+// Recorta desde la posición (x, y) con el tamaño dado
+imagen.crop({ x: 100, y: 50, w: 400, h: 300 });
+```
+
+## Superposición (composite)
+
+```javascript
+import { Jimp } from "jimp";
+
+const fondo = await Jimp.read("./fondo.jpg");
+const marca = await Jimp.read("./marca-agua.png");
+
+// Redimensionar la marca
+marca.resize({ w: 200 });
+
+// Posicionar en esquina inferior derecha
+const x = fondo.width - marca.width - 20;
+const y = fondo.height - marca.height - 20;
+
+fondo.composite(marca, x, y);
+await fondo.write("./con-marca.jpg");
+```
+
+## CLI para procesar imágenes
+
+Construyamos una herramienta de línea de comandos:
+
+```javascript
+// procesar.js
+import { Jimp } from "jimp";
+import path from "path";
+import fs from "fs/promises";
+
+// Uso: node procesar.js <input> <output> [opciones]
+// node procesar.js foto.jpg salida.jpg --width=800 --grey --blur=2
+const args = process.argv.slice(2);
+
+if (args.length < 2) {
+  console.error("Uso: node procesar.js <input> <output> [--width=N] [--grey] [--blur=N]");
+  process.exit(1);
+}
+
+const [inputPath, outputPath, ...flags] = args;
+
+// Parsear flags
+const opciones = {};
+for (const flag of flags) {
+  const [clave, valor] = flag.replace("--", "").split("=");
+  opciones[clave] = valor ?? true;
+}
+
+async function main() {
+  try {
+    console.log(`📂 Leyendo: ${inputPath}`);
+    const imagen = await Jimp.read(inputPath);
+
+    console.log(`📐 Dimensiones originales: ${imagen.width}x${imagen.height}`);
+
+    // Redimensionar
+    if (opciones.width) {
+      imagen.resize({ w: Number(opciones.width) });
+      console.log(`↔ Redimensionado a ancho ${opciones.width}px`);
+    }
+
+    // Escala de grises
+    if (opciones.grey) {
+      imagen.greyscale();
+      console.log("🎨 Escala de grises aplicada");
+    }
+
+    // Desenfoque
+    if (opciones.blur) {
+      imagen.blur(Number(opciones.blur));
+      console.log(`🌀 Blur ${opciones.blur} aplicado`);
+    }
+
+    // Crear directorio de salida si no existe
+    const outputDir = path.dirname(outputPath);
+    await fs.mkdir(outputDir, { recursive: true });
+
+    // Guardar
+    await imagen.write(outputPath);
+    console.log(`✅ Guardado en: ${outputPath}`);
+    console.log(`📐 Dimensiones finales: ${imagen.width}x${imagen.height}`);
+
+  } catch (err) {
+    console.error("❌ Error:", err.message);
+    process.exit(1);
+  }
+}
+
+main();
+```
+
+```bash
+# Ejemplos de uso
+node procesar.js foto.jpg output/foto-sm.jpg --width=400
+node procesar.js foto.jpg output/foto-gris.jpg --grey
+node procesar.js foto.jpg output/foto-final.jpg --width=800 --grey --blur=2
+```
+
+## Procesamiento en lote
+
+```javascript
+// batch.js — Procesar todas las imágenes de una carpeta
+import { Jimp } from "jimp";
+import fs from "fs/promises";
+import path from "path";
+
+const INPUT_DIR = "./input";
+const OUTPUT_DIR = "./output";
+
+async function procesarLote() {
+  await fs.mkdir(OUTPUT_DIR, { recursive: true });
+
+  const archivos = await fs.readdir(INPUT_DIR);
+  const imagenes = archivos.filter((f) =>
+    [".jpg", ".jpeg", ".png"].includes(path.extname(f).toLowerCase())
+  );
+
+  console.log(`🖼 Procesando ${imagenes.length} imágenes...`);
+
+  for (const archivo of imagenes) {
+    const inputPath = path.join(INPUT_DIR, archivo);
+    const outputPath = path.join(OUTPUT_DIR, archivo);
+
+    const imagen = await Jimp.read(inputPath);
+    imagen.resize({ w: 800 }).greyscale();
+    await imagen.write(outputPath);
+
+    console.log(`  ✓ ${archivo}`);
+  }
+
+  console.log(`\n✅ Lote completado. Archivos en: ${OUTPUT_DIR}`);
+}
+
+procesarLote();
+```
+
+<Callout type="info">
+Jimp soporta los formatos **JPEG, PNG, BMP, GIF y TIFF**. Para WebP necesitas el plugin `@jimp/plugin-webp`.
+</Callout>
+
+## Formatos de salida
+
+```javascript
+// El formato se determina por la extensión del archivo de salida
+await imagen.write("salida.jpg");    // JPEG
+await imagen.write("salida.png");    // PNG (soporta transparencia)
+await imagen.write("salida.bmp");    // BMP
+
+// Como buffer (útil en APIs Express)
+const buffer = await imagen.getBuffer("image/jpeg");
+res.set("Content-Type", "image/jpeg");
+res.send(buffer);
+```

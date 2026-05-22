@@ -1,0 +1,198 @@
+---
+titulo: "Matrices y Arrays en JavaScript"
+descripcion: "Crea y manipula arrays con los métodos más usados en JavaScript moderno: map, filter, reduce, find, sort y más."
+tipo: "teoria"
+modulo: 3
+duracion: "4h"
+objetivos:
+  - "Crear arrays literales y acceder a sus elementos por índice."
+  - "Usar métodos de mutación: push, pop, shift, unshift, splice."
+  - "Usar métodos de transformación: map, filter, reduce, find, findIndex, some, every."
+  - "Ordenar arrays con sort y su función comparadora."
+  - "Combinar arrays con spread y concat."
+conceptosClave:
+  - "Array"
+  - "Índice"
+  - "Métodos de mutación"
+  - "Métodos de transformación"
+  - "Callback"
+  - "Desestructuración de arrays"
+recursos:
+  - { nombre: "MDN — Array.prototype", url: "https://developer.mozilla.org/es/docs/Web/JavaScript/Reference/Global_Objects/Array" }
+  - { nombre: "JavaScript.info — Arrays", url: "https://es.javascript.info/array" }
+---
+
+# Matrices y Arrays en JavaScript
+
+Un **array** (o arreglo) es una colección **ordenada** de elementos. Los elementos pueden ser de cualquier tipo: números, strings, objetos u otros arrays.
+
+---
+
+## 1. Crear y acceder a arrays
+
+```javascript
+// Array literal (forma más común)
+const frutas = ["manzana", "pera", "uva", "kiwi"];
+
+// Acceso por índice (empieza en 0)
+console.log(frutas[0]);  // "manzana"
+console.log(frutas[2]);  // "uva"
+console.log(frutas[frutas.length - 1]); // "kiwi" (último)
+
+// Arrays mixtos (posible pero no recomendado)
+const mezcla = [1, "dos", true, null, { x: 3 }];
+
+// Array de objetos (muy común en la práctica)
+const estudiantes = [
+  { nombre: "Ana", nota: 6.5 },
+  { nombre: "Luis", nota: 4.0 },
+  { nombre: "María", nota: 5.8 },
+];
+```
+
+---
+
+## 2. Métodos que MUTAN el array original
+
+```javascript
+const nums = [1, 2, 3];
+
+nums.push(4);          // Agrega al final   → [1, 2, 3, 4]
+nums.pop();            // Elimina el último → [1, 2, 3]
+nums.unshift(0);       // Agrega al inicio  → [0, 1, 2, 3]
+nums.shift();          // Elimina el primero → [1, 2, 3]
+
+// splice: elimina y/o inserta en cualquier posición
+nums.splice(1, 1);           // Elimina 1 elemento en índice 1 → [1, 3]
+nums.splice(1, 0, 2, 2.5);   // Inserta 2 y 2.5 en índice 1
+```
+
+<Callout type="warning">
+Los métodos que mutan el array (push, pop, splice, sort, reverse) **modifican el array original**. En la programación moderna se prefiere trabajar con copias para evitar efectos secundarios.
+</Callout>
+
+---
+
+## 3. Métodos que NO mutan (retornan nuevo array)
+
+### map — transforma cada elemento
+
+```javascript
+const notas = [4.5, 6.0, 5.5, 7.0];
+
+// Multiplica cada nota por 10 para obtener porcentaje
+const porcentajes = notas.map((nota) => nota * 10);
+// [45, 60, 55, 70]
+
+// Transformar array de objetos
+const nombres = estudiantes.map((e) => e.nombre);
+// ["Ana", "Luis", "María"]
+```
+
+### filter — filtra elementos que cumplen una condición
+
+```javascript
+const aprobados = estudiantes.filter((e) => e.nota >= 4.0);
+// [{ nombre: "Ana", nota: 6.5 }, { nombre: "María", nota: 5.8 }]
+// Luis (4.0) también cumple >= 4.0 → también entra
+```
+
+### reduce — acumula un resultado
+
+```javascript
+// Suma de notas
+const sumaNotas = notas.reduce((acumulador, nota) => acumulador + nota, 0);
+// 23.0
+
+// Promedio
+const promedio = sumaNotas / notas.length;
+// 5.75
+```
+
+### find y findIndex
+
+```javascript
+// find: retorna el PRIMER elemento que cumple la condición
+const ana = estudiantes.find((e) => e.nombre === "Ana");
+// { nombre: "Ana", nota: 6.5 }
+
+// findIndex: retorna el ÍNDICE del primer elemento encontrado
+const indiceAna = estudiantes.findIndex((e) => e.nombre === "Ana");
+// 0
+```
+
+### some y every
+
+```javascript
+// some: ¿ALGUNO cumple la condición?
+const hayReprobados = estudiantes.some((e) => e.nota < 4.0);
+// false
+
+// every: ¿TODOS cumplen la condición?
+const todosAprobaron = estudiantes.every((e) => e.nota >= 4.0);
+// true
+```
+
+---
+
+## 4. Ordenar arrays
+
+```javascript
+const numeros = [5, 1, 8, 3, 2];
+
+// sort muta el array original — usar con copia
+const ordenados = [...numeros].sort((a, b) => a - b); // ascendente
+// [1, 2, 3, 5, 8]
+
+const descendente = [...numeros].sort((a, b) => b - a);
+// [8, 5, 3, 2, 1]
+
+// Ordenar objetos por propiedad
+const porNota = [...estudiantes].sort((a, b) => b.nota - a.nota);
+// María 5.8, Luis 4.0, Ana 6.5 → Ana 6.5, María 5.8, Luis 4.0
+```
+
+---
+
+## 5. Desestructuración y spread
+
+```javascript
+// Desestructuración
+const [primero, segundo, ...resto] = [10, 20, 30, 40, 50];
+console.log(primero); // 10
+console.log(resto);   // [30, 40, 50]
+
+// Spread — copia o combina arrays
+const arr1 = [1, 2, 3];
+const arr2 = [4, 5, 6];
+const combinado = [...arr1, ...arr2]; // [1, 2, 3, 4, 5, 6]
+const copia = [...arr1];              // copia sin referenciar el original
+```
+
+---
+
+## 6. Práctica interactiva
+
+<CodeEditor
+  initialCode={`const productos = [
+  { nombre: "Laptop",   precio: 800000, stock: 3  },
+  { nombre: "Mouse",    precio: 25000,  stock: 15 },
+  { nombre: "Monitor",  precio: 350000, stock: 0  },
+  { nombre: "Teclado",  precio: 45000,  stock: 8  },
+  { nombre: "Webcam",   precio: 80000,  stock: 2  },
+];
+
+function solution() {
+  // 1. Filtra productos con stock > 0
+  const disponibles = productos.filter(p => p.stock > 0);
+
+  // 2. Obtén solo los nombres de los productos disponibles
+  const nombres = disponibles.map(p => p.nombre);
+
+  // 3. Calcula el valor total del inventario (precio × stock)
+  const valorTotal = productos.reduce((acc, p) => acc + p.precio * p.stock, 0);
+
+  return \`Disponibles: \${nombres.join(", ")}\\nValor inventario: $\${valorTotal.toLocaleString("es-CL")}\`;
+}
+`}
+/>

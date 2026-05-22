@@ -1,0 +1,34 @@
+---
+titulo: "Proyecto integrador"
+tipo: proyecto
+duracion: 12h
+objetivos:
+  - Construir una API RESTful completa con MVC, file upload y autenticación JWT
+  - Integrar access token + refresh token con secretos distintos y rotación
+  - Proteger rutas de escritura por rol y rutas de lectura por autenticación
+  - Subir imágenes de guitarras y servirlas como contenido estático
+---
+
+# Proyecto integrador
+
+## API de Guitarras con JWT y File Upload
+
+Construir la **API RESTful de Guitarras** con Node.js y Express integrando las tres capas desarrolladas en el módulo: arquitectura MVC, subida de imágenes con `express-fileupload` y autenticación/autorización con JWT (access + refresh tokens).
+
+**Paso a paso**
+
+1. Parte del proyecto `01-api-mvc` como base: estructura MVC, CRUD completo de guitarras con persistencia en `db.json`, respuestas estandarizadas, HATEOAS y manejo global de errores.
+2. Añade el campo `imagen` al modelo de guitarra. Integra `express-fileupload` con límite de 5 MB y extensiones `.jpg`, `.jpeg`, `.png`. Implementa el endpoint `POST /api/v1/guitarras/:guitarId/imagen` que suba la imagen a `uploads/` y actualice el campo `imagen` del registro.
+3. Sirve la carpeta `uploads/` como contenido estático: `app.use('/uploads', express.static('uploads'))`, y devuelve la URL pública en la respuesta.
+4. Implementa el servicio de autenticación: `loginService`, `refreshTokenService`, `logoutService` y `verifyAccessTokenService` con par de secretos (`JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET`), blacklist en memoria y rotación de refresh tokens.
+5. Crea el middleware `authenticateJWT` y el factory `authorizeRoles`. Protege todas las rutas de guitarras: lectura requiere autenticación, escritura requiere rol `admin`.
+6. Añade los endpoints públicos `POST /auth/login`, `GET /auth/refresh` y `POST /auth/logout` (este último requiere access token válido).
+7. Verifica el flujo completo con Postman o Thunder Client: login → token → GET (usuario) → POST/PUT/DELETE (admin) → refresh → logout.
+
+**Entregable**
+
+Sube el **link del repositorio GitHub** que contenga:
+- Proyecto completo con estructura MVC (controllers, services, middlewares, utils, database, v1/routes)
+- `.env.sample` con todas las variables requeridas sin valores reales
+- `README.md` con instrucciones de instalación, ejecución y ejemplos de los endpoints con `curl` o Postman
+- El repositorio **no debe incluir** `node_modules/`, `.env` con credenciales reales ni la carpeta `uploads/` con archivos subidos

@@ -1,0 +1,319 @@
+---
+titulo: "React con TypeScript"
+tipo: teoria
+duracion: 10h
+objetivos:
+  - Comprender por qué TypeScript es obligatorio en proyectos empresariales con React
+  - Tipar props, estado y eventos con interfaces y tipos utilitarios de React
+  - Crear componentes reutilizables con props opcionales y conditional rendering
+  - Manejar listas filtradas y formularios controlados con seguridad de tipos
+recursos:
+  - { nombre: "React TypeScript Cheatsheet", url: "https://react-typescript-cheatsheet.netlify.app/" }
+  - { nombre: "TypeScript Handbook", url: "https://www.typescriptlang.org/docs/handbook/intro.html" }
+  - { nombre: "React Docs — TypeScript", url: "https://react.dev/learn/typescript" }
+  - { nombre: "Vite Docs", url: "https://vitejs.dev/guide/" }
+---
+
+# React con TypeScript
+
+React es la biblioteca UI más utilizada en proyectos empresariales. TypeScript añade **tipado estático** que detecta errores antes de ejecutar el código, genera autocompletado inteligente y hace el código auto-documentado. Es requisito explícito en el perfil Full Stack.
+
+## ¿Por qué TypeScript en React?
+
+```
+Sin TypeScript:
+  <GuitarCard guitarra={{ id: 1, nombre: "Fender" }} />
+  // ¿Es disponible requerido? ¿Qué pasa si falta?
+  // → Error en runtime, difícil de rastrear
+
+Con TypeScript:
+  <GuitarCard guitarra={{ id: 1, nombre: "Fender" }} />
+  // TS Error: Propiedad 'disponible' es requerida en GuitarCardProps
+  // → Error en el editor, antes de ejecutar nada
+```
+
+## Proyecto base: Vite + React + TypeScript
+
+```bash
+npm create vite@latest mi-app -- --template react-ts
+cd mi-app
+npm install
+npm run dev
+```
+
+```
+src/
+├── main.tsx           ← createRoot + StrictMode
+├── App.tsx            ← componente raíz
+└── ejemplos/
+    ├── 01-componente-basico/GuitarCard.tsx
+    ├── 02-lista-con-tipos/GuitarList.tsx
+    └── 03-formulario-controlado/LoginForm.tsx
+```
+
+## Ejemplo 1 — Props tipadas y conditional rendering
+
+```tsx
+// ejemplos/01-componente-basico/GuitarCard.tsx
+interface Guitarra {
+  id: number;
+  nombre: string;
+  tipo: 'electrica' | 'acustica' | 'clasica';
+  disponible: boolean;
+  imagen?: string; // opcional
+}
+
+interface GuitarCardProps {
+  guitarra: Guitarra;
+  onSelect?: (id: number) => void; // callback opcional
+}
+
+export function GuitarCard({ guitarra, onSelect }: GuitarCardProps) {
+  return (
+    <article className={`card ${!guitarra.disponible ? 'card--disabled' : ''}`}>
+      {/* Conditional rendering: solo si imagen existe */}
+      {guitarra.imagen && (
+        <img src={guitarra.imagen} alt={guitarra.nombre} />
+      )}
+
+      <h3>{guitarra.nombre}</h3>
+
+      <span className={`badge badge--${guitarra.tipo}`}>
+        {guitarra.tipo}
+      </span>
+
+      {/* El botón solo aparece si onSelect fue pasado */}
+      {onSelect && (
+        <button
+          onClick={() => onSelect(guitarra.id)}
+          disabled={!guitarra.disponible}
+        >
+          {guitarra.disponible ? 'Ver detalle' : 'Sin stock'}
+        </button>
+      )}
+    </article>
+  );
+}
+```
+
+<Callout type="tip">
+**Union types** como `'electrica' | 'acustica' | 'clasica'` son clave en React + TS: el editor te avisa si pasas un valor que no existe y las props opcionales con `?` son self-documenting.
+</Callout>
+
+## Ejemplo 2 — Lista con filtros y estado tipado
+
+```tsx
+// ejemplos/02-lista-con-tipos/GuitarList.tsx
+import { useState } from 'react';
+import { GuitarCard } from '../01-componente-basico/GuitarCard';
+
+type TipoGuitarra = 'electrica' | 'acustica' | 'clasica';
+
+interface Guitarra {
+  id: number;
+  nombre: string;
+  tipo: TipoGuitarra;
+  disponible: boolean;
+}
+
+const GUITARRAS: Guitarra[] = [
+  { id: 1, nombre: 'Fender Stratocaster', tipo: 'electrica', disponible: true },
+  { id: 2, nombre: 'Gibson J-45',         tipo: 'acustica',  disponible: true },
+  { id: 3, nombre: 'Yamaha C40',          tipo: 'clasica',   disponible: false },
+  { id: 4, nombre: 'Gibson Les Paul',     tipo: 'electrica', disponible: false },
+];
+
+export function GuitarList() {
+  // useState tipado: string vacío o uno de los tres tipos
+  const [filtroTipo, setFiltroTipo] = useState<TipoGuitarra | ''>('');
+  const [soloDisponibles, setSoloDisponibles] = useState<boolean>(false);
+  const [seleccionada, setSeleccionada] = useState<number | null>(null);
+
+  const filtradas = GUITARRAS
+    .filter((g) => filtroTipo === '' || g.tipo === filtroTipo)
+    .filter((g) => !soloDisponibles || g.disponible);
+
+  return (
+    <div>
+      {/* Filtros */}
+      <div className="filtros">
+        <select
+          value={filtroTipo}
+          onChange={(e) => setFiltroTipo(e.target.value as TipoGuitarra | '')}
+        >
+          <option value="">Todos los tipos</option>
+          <option value="electrica">Eléctrica</option>
+          <option value="acustica">Acústica</option>
+          <option value="clasica">Clásica</option>
+        </select>
+
+        <label>
+          <input
+            type="checkbox"
+            checked={soloDisponibles}
+            onChange={(e) => setSoloDisponibles(e.target.checked)}
+          />
+          Solo disponibles
+        </label>
+      </div>
+
+      {/* Resultado */}
+      <p>{filtradas.length} guitarras encontradas</p>
+
+      <div className="grid">
+        {filtradas.map((g) => (
+          <GuitarCard
+            key={g.id}
+            guitarra={g}
+            onSelect={(id) => setSeleccionada(id)}
+          />
+        ))}
+      </div>
+
+      {seleccionada && <p>Guitarra seleccionada: #{seleccionada}</p>}
+    </div>
+  );
+}
+```
+
+## Ejemplo 3 — Formulario controlado
+
+```tsx
+// ejemplos/03-formulario-controlado/LoginForm.tsx
+import { useState, FormEvent, ChangeEvent } from 'react';
+
+interface LoginFormData {
+  email: string;
+  password: string;
+}
+
+interface LoginFormProps {
+  onSubmit: (data: LoginFormData) => Promise<void>;
+  loading?: boolean;
+}
+
+export function LoginForm({ onSubmit, loading = false }: LoginFormProps) {
+  const [formData, setFormData] = useState<LoginFormData>({
+    email: '',
+    password: '',
+  });
+  const [error, setError] = useState<string | null>(null);
+
+  // Un handler tipado para todos los inputs de texto
+  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!formData.email || !formData.password) {
+      setError('Email y contraseña son obligatorios.');
+      return;
+    }
+
+    try {
+      await onSubmit(formData);
+    } catch {
+      setError('Credenciales inválidas. Intenta de nuevo.');
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input
+        type="email"
+        name="email"
+        value={formData.email}
+        onChange={handleChange}
+        placeholder="Email"
+        disabled={loading}
+      />
+      <input
+        type="password"
+        name="password"
+        value={formData.password}
+        onChange={handleChange}
+        placeholder="Contraseña"
+        disabled={loading}
+      />
+      {error && <p className="error">{error}</p>}
+      <button type="submit" disabled={loading}>
+        {loading ? 'Iniciando...' : 'Iniciar sesión'}
+      </button>
+    </form>
+  );
+}
+```
+
+## Tipos de eventos más usados en React + TS
+
+```tsx
+// Inputs y formularios
+React.ChangeEvent<HTMLInputElement>
+React.ChangeEvent<HTMLSelectElement>
+React.ChangeEvent<HTMLTextAreaElement>
+React.FormEvent<HTMLFormElement>
+
+// Ratón y teclado
+React.MouseEvent<HTMLButtonElement>
+React.KeyboardEvent<HTMLInputElement>
+
+// Children y refs
+interface Props { children: React.ReactNode; }
+const ref = useRef<HTMLInputElement>(null);
+ref.current?.focus(); // acceso seguro con optional chaining
+```
+
+## Hook personalizado tipado
+
+```tsx
+// hooks/useFetch.ts
+interface FetchState<T> {
+  data: T | null;
+  loading: boolean;
+  error: string | null;
+}
+
+export function useFetch<T>(url: string): FetchState<T> {
+  const [state, setState] = useState<FetchState<T>>({
+    data: null,
+    loading: true,
+    error: null,
+  });
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    fetch(url, { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json() as Promise<T>;
+      })
+      .then((data) => setState({ data, loading: false, error: null }))
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          setState({ data: null, loading: false, error: err.message });
+        }
+      });
+
+    return () => controller.abort(); // cleanup al desmontar
+  }, [url]);
+
+  return state;
+}
+
+// Uso:
+const { data, loading, error } = useFetch<Guitarra[]>('/api/guitarras');
+```
+
+<Callout type="warning">
+**`as TipoEsperado`** (type assertion) se usa cuando TypeScript no puede inferir el tipo correcto por sí solo, como en `e.target.value as TipoGuitarra`. Úsalo con moderación — si lo usas demasiado estás perdiendo el beneficio de TypeScript.
+</Callout>
+
+## Ejercicios propuestos
+
+1. Añade un prop `onDelete: (id: number) => void` opcional a `GuitarCard` y muestra un botón eliminar solo cuando el prop esté presente.
+2. Extiende `GuitarList` con un `input` de búsqueda por texto que filtre por nombre en tiempo real.
+3. Crea un componente `Pagination` genérico que reciba `totalItems: number`, `itemsPerPage: number`, `currentPage: number` y `onPageChange: (page: number) => void`.

@@ -1,0 +1,315 @@
+---
+titulo: "Bases de JavaScript"
+descripcion: "Variables, tipos de datos, operadores, estructuras de control (condicionales y bucles) y funciones básicas en JavaScript."
+tipo: "practica"
+modulo: 2
+duracion: "10h"
+objetivos:
+  - "Declarar variables con let y const y comprender el scope."
+  - "Identificar los tipos de datos primitivos de JavaScript."
+  - "Usar condicionales (if/else, switch) para controlar el flujo."
+  - "Usar bucles (for, while) para repetir operaciones."
+  - "Escribir funciones declaradas y arrow functions."
+conceptosClave:
+  - "Variables: var, let, const"
+  - "Tipos de datos primitivos"
+  - "Operadores"
+  - "Condicionales"
+  - "Bucles"
+  - "Funciones"
+recursos:
+  - { nombre: "JavaScript.info — Fundamentos", url: "https://es.javascript.info/first-steps" }
+  - { nombre: "MDN — Guía de JavaScript", url: "https://developer.mozilla.org/es/docs/Web/JavaScript/Guide" }
+---
+
+# Bases de JavaScript
+
+JavaScript es el único lenguaje de programación que los navegadores ejecutan de forma nativa. Permite agregar **interactividad** a las páginas web: responder a clics, validar formularios, consumir APIs y mucho más.
+
+---
+
+## 1. Variables y tipos de datos
+
+### Declaración de variables
+
+```javascript
+// const: valor constante — no se puede reasignar (preferida)
+const nombre = "Ana";
+const edad = 25;
+
+// let: valor variable — puede cambiar
+let contador = 0;
+contador = contador + 1;
+
+// var: forma antigua — evitar (tiene scope de función, no de bloque)
+var apellido = "García"; // ❌ Evitar en código moderno
+```
+
+### Tipos de datos primitivos
+
+```javascript
+// String (cadena de texto)
+const saludo = "Hola, mundo";
+const nombre = 'Ana';
+const plantilla = `Bienvenida, ${nombre}!`; // Template literal
+
+// Number (número — enteros y decimales)
+const edad = 25;
+const precio = 9.99;
+
+// Boolean (verdadero / falso)
+const esMayor = true;
+const estaLogueado = false;
+
+// null (ausencia intencional de valor)
+const resultado = null;
+
+// undefined (variable declarada pero sin valor)
+let sinValor;
+console.log(sinValor); // undefined
+
+// typeof para verificar el tipo
+console.log(typeof nombre);     // "string"
+console.log(typeof edad);       // "number"
+console.log(typeof esMayor);    // "boolean"
+console.log(typeof null);       // "object" ← bug histórico de JS
+```
+
+---
+
+## 2. Operadores
+
+### Aritméticos
+
+```javascript
+console.log(10 + 3);   // 13
+console.log(10 - 3);   // 7
+console.log(10 * 3);   // 30
+console.log(10 / 3);   // 3.333...
+console.log(10 % 3);   // 1  (módulo / resto)
+console.log(2 ** 8);   // 256 (potencia)
+```
+
+### De comparación
+
+```javascript
+// Usar SIEMPRE === (igualdad estricta — compara valor Y tipo)
+console.log(5 === 5);    // true
+console.log(5 === "5");  // false ← string vs number
+
+// == (igualdad abstracta — hace coerción de tipos, evitar)
+console.log(5 == "5");   // true  ← ¡confuso!
+
+console.log(5 !== 3);    // true
+console.log(10 > 5);     // true
+console.log(3 <= 3);     // true
+```
+
+### Lógicos
+
+```javascript
+// AND: ambas condiciones deben ser verdaderas
+console.log(true && true);   // true
+console.log(true && false);  // false
+
+// OR: al menos una condición verdadera
+console.log(false || true);  // true
+console.log(false || false); // false
+
+// NOT: invierte el valor
+console.log(!true);   // false
+console.log(!false);  // true
+```
+
+---
+
+## 3. Condicionales
+
+### if / else if / else
+
+```javascript
+const nota = 5.5;
+
+if (nota >= 6) {
+  console.log("Aprobado con distinción");
+} else if (nota >= 4) {
+  console.log("Aprobado");
+} else {
+  console.log("Reprobado");
+}
+```
+
+### Operador ternario (condicional en una línea)
+
+```javascript
+const edad = 20;
+const acceso = edad >= 18 ? "Permitido" : "Denegado";
+console.log(acceso); // "Permitido"
+
+// Equivale a:
+// if (edad >= 18) { acceso = "Permitido"; } else { acceso = "Denegado"; }
+```
+
+### switch
+
+Útil cuando hay múltiples casos exactos para comparar:
+
+```javascript
+const dia = "lunes";
+
+switch (dia) {
+  case "lunes":
+  case "martes":
+  case "miércoles":
+  case "jueves":
+  case "viernes":
+    console.log("Día laboral");
+    break;
+  case "sábado":
+  case "domingo":
+    console.log("Fin de semana");
+    break;
+  default:
+    console.log("Día no reconocido");
+}
+```
+
+<Callout type="warning">
+No olvides el `break` en cada `case` del `switch`. Sin él, la ejecución continúa en el siguiente `case` (comportamiento llamado "fall-through").
+</Callout>
+
+---
+
+## 4. Bucles
+
+### for — cuando sabes cuántas veces repetir
+
+```javascript
+for (let i = 0; i < 5; i++) {
+  console.log(`Iteración ${i}`);
+}
+// Imprime: Iteración 0, Iteración 1, ..., Iteración 4
+
+// Recorrer un array
+const frutas = ["manzana", "pera", "uva"];
+for (let i = 0; i < frutas.length; i++) {
+  console.log(frutas[i]);
+}
+
+// for...of — forma moderna de recorrer arrays
+for (const fruta of frutas) {
+  console.log(fruta);
+}
+```
+
+### while — cuando la condición es dinámica
+
+```javascript
+let intentos = 0;
+const maxIntentos = 3;
+
+while (intentos < maxIntentos) {
+  console.log(`Intento ${intentos + 1}`);
+  intentos++;
+}
+```
+
+### do...while — se ejecuta al menos una vez
+
+```javascript
+let respuesta;
+do {
+  respuesta = prompt("¿Cuánto es 2 + 2?");
+} while (respuesta !== "4");
+
+console.log("¡Correcto!");
+```
+
+---
+
+## 5. Funciones
+
+Las funciones son bloques de código **reutilizables** que reciben datos (parámetros), los procesan y devuelven un resultado.
+
+### Función declarada (con hoisting)
+
+```javascript
+// Puede llamarse ANTES de su declaración
+console.log(sumar(3, 4)); // 7
+
+function sumar(a, b) {
+  return a + b;
+}
+```
+
+### Función expresión (sin hoisting)
+
+```javascript
+// Solo puede llamarse DESPUÉS de su declaración
+const multiplicar = function(a, b) {
+  return a * b;
+};
+
+console.log(multiplicar(3, 4)); // 12
+```
+
+### Arrow function (ES6+) — sintaxis moderna
+
+```javascript
+// Forma completa
+const dividir = (a, b) => {
+  return a / b;
+};
+
+// Forma corta (retorno implícito — sin llaves)
+const cuadrado = (n) => n * n;
+
+// Sin parámetros
+const saludar = () => "¡Hola!";
+
+console.log(cuadrado(5));  // 25
+console.log(saludar());    // "¡Hola!"
+```
+
+### Parámetros por defecto
+
+```javascript
+function saludar(nombre = "estudiante") {
+  return `¡Hola, ${nombre}!`;
+}
+
+console.log(saludar("Ana"));   // "¡Hola, Ana!"
+console.log(saludar());        // "¡Hola, estudiante!"
+```
+
+---
+
+## 6. Práctica interactiva
+
+<CodeEditor
+  initialCode={`// Ejercicio: clasifica una nota
+// Completa la función para que devuelva:
+// "Aprobado con distinción" si nota >= 6
+// "Aprobado"                si nota >= 4
+// "Reprobado"               si nota < 4
+
+function clasificarNota(nota) {
+  // Tu código aquí
+}
+
+function solution() {
+  const resultados = [7, 5.5, 3.2, 6.0, 4.0].map(n =>
+    \`Nota \${n}: \${clasificarNota(n)}\`
+  );
+  return resultados.join("\\n");
+}
+`}
+/>
+
+---
+
+## 7. Ejercicios adicionales
+
+1. **Calculadora:** Escribe una función `calcular(a, operador, b)` que soporte `+`, `-`, `*` y `/`.
+2. **FizzBuzz:** Imprime los números del 1 al 30. Si el número es múltiplo de 3, imprime "Fizz"; si es múltiplo de 5, imprime "Buzz"; si es múltiplo de ambos, imprime "FizzBuzz".
+3. **Suma de array:** Escribe una función que reciba un array de números y devuelva su suma total.

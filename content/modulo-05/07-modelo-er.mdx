@@ -1,0 +1,368 @@
+---
+titulo: "Modelo Entidad-Relación"
+descripcion: "Diseño conceptual y físico de bases de datos: entidades, cardinalidad, normalización y caso práctico Alke Wallet."
+tipo: "proyecto"
+modulo: 5
+duracion: "4h"
+objetivos:
+  - "Identificar entidades, atributos y relaciones en un dominio de problema."
+  - "Definir la cardinalidad: 1:1, 1:N y N:N."
+  - "Distinguir el modelo conceptual, lógico y físico."
+  - "Traducir relaciones N:N en tablas intermedias."
+  - "Aplicar las tres primeras formas normales (1FN, 2FN, 3FN)."
+  - "Diseñar el esquema completo de Alke Wallet desde cero."
+conceptosClave:
+  - "Entidad"
+  - "Atributo"
+  - "Relación"
+  - "Cardinalidad"
+  - "Tabla intermedia"
+  - "Normalización"
+  - "1FN / 2FN / 3FN"
+  - "Clave natural vs surrogada"
+recursos:
+  - { nombre: "Lucidchart — ER Diagrams", url: "https://www.lucidchart.com/pages/er-diagrams" }
+  - { nombre: "draw.io (gratis)", url: "https://app.diagrams.net/" }
+  - { nombre: "dbdiagram.io (online)", url: "https://dbdiagram.io/" }
+---
+
+# Modelo Entidad-Relación
+
+El **Modelo Entidad-Relación (ER)** es una técnica de diseño que permite representar la estructura de una base de datos de forma **visual e independiente del motor** de base de datos. Es el plano antes de construir.
+
+---
+
+## Etapas del diseño
+
+```
+Mundo real
+    ↓
+Modelo Conceptual   → Entidades, atributos, relaciones (sin tipos de datos)
+    ↓
+Modelo Lógico       → Tablas, columnas, tipos de datos, PKs y FKs
+    ↓
+Modelo Físico       → Script SQL específico para el motor (MySQL, PostgreSQL...)
+```
+
+---
+
+## Conceptos fundamentales
+
+### Entidad
+
+Una **entidad** es cualquier "cosa" del mundo real sobre la que queremos guardar información. Se representa como un **sustantivo**.
+
+```
+Entidades de Alke Wallet:
+  - Usuario
+  - Moneda
+  - Transacción
+```
+
+### Atributo
+
+Un **atributo** es una propiedad de la entidad.
+
+```
+Usuario:     nombre, correo, contraseña, saldo, fecha_creación
+Moneda:      nombre, símbolo
+Transacción: valor, fecha
+```
+
+### Clave primaria: natural vs surrogada
+
+| Tipo | Descripción | Ejemplo |
+|------|-------------|---------|
+| **Natural** | Existe en el mundo real | RUT, ISBN, código ISO |
+| **Surrogada** | Generada por la BD (artificial) | `user_id AUTO_INCREMENT`, UUID |
+
+En la práctica, las **surrogadas** (AUTO_INCREMENT / UUID) son más comunes porque:
+- Las claves naturales pueden cambiar (ej: una persona cambia su RUT por error)
+- Son más eficientes en índices y JOINs
+
+---
+
+## Cardinalidad
+
+La **cardinalidad** define cuántas instancias de una entidad se relacionan con cuántas de otra.
+
+### 1:1 — Uno a uno
+
+```
+Un usuario tiene un solo perfil extendido,
+y ese perfil pertenece a un solo usuario.
+
+usuarios ─────────────── perfiles_extendidos
+  1                              1
+```
+
+```sql
+CREATE TABLE perfiles_extendidos (
+  perfil_id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id   INT NOT NULL UNIQUE,  -- UNIQUE garantiza 1:1
+  avatar_url VARCHAR(255),
+  bio TEXT,
+  FOREIGN KEY (user_id) REFERENCES usuarios(user_id)
+);
+```
+
+### 1:N — Uno a muchos
+
+```
+Un usuario puede enviar muchas transacciones,
+pero cada transacción tiene un solo remitente.
+
+usuarios ─────────────── transacciones
+  1                           N
+```
+
+La FK siempre va en el lado **N** (muchos):
+
+```sql
+-- FK en transacciones (lado N), referencia a usuarios (lado 1)
+CONSTRAINT fk_trans_sender
+  FOREIGN KEY (sender_user_id) REFERENCES usuarios(user_id)
+```
+
+### N:N — Muchos a muchos
+
+```
+Un usuario puede tener muchas monedas,
+y una moneda puede pertenecer a muchos usuarios.
+
+usuarios ─────────────── monedas
+  N                          N
+```
+
+Las relaciones N:N **no pueden representarse directamente con FK**. Se necesita una **tabla intermedia** (también llamada tabla de unión o pivot):
+
+```sql
+-- Tabla intermedia: billeteras_usuario
+CREATE TABLE billeteras_usuario (
+  wallet_id   INT AUTO_INCREMENT,
+  user_id     INT NOT NULL,
+  currency_id INT NOT NULL,
+  balance     DECIMAL(12,2) NOT NULL DEFAULT 0,
+
+  PRIMARY KEY (wallet_id),
+
+  -- Evitar duplicados: un usuario no puede tener dos billeteras del mismo tipo
+  UNIQUE KEY uq_user_currency (user_id, currency_id),
+
+  FOREIGN KEY (user_id)      REFERENCES usuarios(user_id),
+  FOREIGN KEY (currency_id)  REFERENCES monedas(currency_id)
+);
+```
+
+---
+
+## Normalización
+
+La **normalización** es el proceso de organizar las columnas y tablas para **reducir la redundancia** y mejorar la integridad de los datos.
+
+### Primera Forma Normal (1FN)
+
+**Regla:** Cada columna debe contener **valores atómicos** (indivisibles). No debe haber grupos repetidos.
+
+```
+❌ Antes (no normalizado):
+┌──────────┬────────┬──────────────────────────────────┐
+│ user_id  │ nombre │ telefonos                        │
+├──────────┼────────┼──────────────────────────────────┤
+│ 1        │ Juan   │ 912345678, 987654321             │ ← múltiples valores
+└──────────┴────────┴──────────────────────────────────┘
+
+✅ Después (1FN):
+┌──────────┬────────┐    ┌──────────┬──────────────┐
+│ user_id  │ nombre │    │ user_id  │ telefono     │
+├──────────┼────────┤    ├──────────┼──────────────┤
+│ 1        │ Juan   │    │ 1        │ 912345678    │
+└──────────┴────────┘    │ 1        │ 987654321    │
+                         └──────────┴──────────────┘
+```
+
+### Segunda Forma Normal (2FN)
+
+**Regla:** Debe estar en 1FN + cada columna no clave debe depender de **toda la clave primaria** (aplica cuando la PK es compuesta).
+
+```
+❌ Tabla orden_detalle con PK compuesta (order_id, product_id):
+┌──────────┬────────────┬────────────┬──────────────────┐
+│ order_id │ product_id │ cantidad   │ nombre_producto  │
+└──────────┴────────────┴────────────┴──────────────────┘
+           ↑ nombre_producto solo depende de product_id, no de (order_id + product_id)
+
+✅ Después (2FN): separar productos en su propia tabla
+┌──────────┬────────────┬───────────┐    ┌────────────┬──────────────────┐
+│ order_id │ product_id │ cantidad  │    │ product_id │ nombre_producto  │
+└──────────┴────────────┴───────────┘    └────────────┴──────────────────┘
+```
+
+### Tercera Forma Normal (3FN)
+
+**Regla:** Debe estar en 2FN + no debe haber **dependencias transitivas** (columna A → columna B → columna C, donde C no depende directamente de la PK).
+
+```
+❌ Tabla usuarios con dependencia transitiva:
+┌──────────┬────────┬──────────────────┬──────────────┐
+│ user_id  │ nombre │ ciudad_id        │ nombre_ciudad│
+└──────────┴────────┴──────────────────┴──────────────┘
+                    ↑ nombre_ciudad depende de ciudad_id, no de user_id
+
+✅ Después (3FN): separar ciudades
+┌──────────┬────────┬──────────────────┐    ┌───────────┬──────────────┐
+│ user_id  │ nombre │ ciudad_id (FK)   │    │ ciudad_id │ nombre       │
+└──────────┴────────┴──────────────────┘    └───────────┴──────────────┘
+```
+
+---
+
+## Diseño completo: Alke Wallet desde cero
+
+### Paso 1 — Identificar entidades
+
+Del enunciado: *"Sistema de billetera digital donde usuarios pueden transferir dinero entre sí en diferentes monedas"*
+
+```
+Entidades:
+  - Usuario
+  - Moneda
+  - Transacción
+```
+
+### Paso 2 — Definir atributos
+
+```
+Usuario:
+  - user_id (PK, surrogada)
+  - nombre (obligatorio)
+  - correo (obligatorio, único)
+  - contraseña (obligatorio)
+  - saldo (decimal, default 0)
+  - fecha_creación (date, default hoy)
+
+Moneda:
+  - currency_id (PK, surrogada)
+  - nombre (ej: "Peso chileno")
+  - símbolo (ej: "CLP")
+
+Transacción:
+  - transaction_id (PK, surrogada)
+  - remitente (FK → Usuario)
+  - receptor (FK → Usuario)
+  - valor (decimal, positivo)
+  - fecha_hora (datetime, default ahora)
+```
+
+### Paso 3 — Definir relaciones y cardinalidad
+
+```
+Usuario ──(envía)──→ Transacción   → 1:N (un usuario puede enviar muchas)
+Usuario ──(recibe)─→ Transacción   → 1:N (un usuario puede recibir muchas)
+Moneda ────────────→ Transacción   → 1:N (una moneda aplica a muchas transacciones)
+```
+
+### Paso 4 — Diagrama ER (notación texto)
+
+```
+┌──────────────────┐       ┌──────────────────────────┐
+│    usuarios      │       │       transacciones       │
+├──────────────────┤       ├──────────────────────────┤
+│ PK user_id       │──1──N─┤ FK sender_user_id         │
+│    nombre        │       │ FK receiver_user_id ─┐    │
+│    correo        │◄──────┤                      │    │
+│    contrasena    │       │ PK transaction_id    │    │
+│    saldo         │       │    valor             │    │
+│    created_at    │       │    transaction_date  │    │
+└──────────────────┘       │ FK currency_id  ─────┼──┐ │
+                           └──────────────────────┘  │ │
+                                                      │ │
+                           ┌──────────────────┐       │ │
+                           │     monedas      │       │ │
+                           ├──────────────────┤       │ │
+                           │ PK currency_id   │◄──────┘ │
+                           │    currency_name │         │
+                           │    currency_symbol│         │
+                           └──────────────────┘         │
+                                    ▲                    │
+                                    └────────────────────┘
+```
+
+### Paso 5 — Script físico (MySQL)
+
+```sql
+DROP DATABASE IF EXISTS alke_wallet;
+CREATE DATABASE alke_wallet CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE alke_wallet;
+
+-- Tabla: usuarios
+CREATE TABLE usuarios (
+  user_id    INT            AUTO_INCREMENT,
+  nombre     VARCHAR(80)    NOT NULL,
+  correo     VARCHAR(120)   NOT NULL,
+  contrasena VARCHAR(120)   NOT NULL,
+  saldo      DECIMAL(12,2)  NOT NULL DEFAULT 0,
+  created_at DATE           NOT NULL DEFAULT (CURRENT_DATE),
+  PRIMARY KEY (user_id),
+  UNIQUE KEY uq_correo (correo)
+);
+
+-- Tabla: monedas
+CREATE TABLE monedas (
+  currency_id     INT         AUTO_INCREMENT,
+  currency_name   VARCHAR(60) NOT NULL,
+  currency_symbol VARCHAR(10) NOT NULL,
+  PRIMARY KEY (currency_id)
+);
+
+-- Tabla: transacciones
+CREATE TABLE transacciones (
+  transaction_id   INT            AUTO_INCREMENT,
+  sender_user_id   INT            NOT NULL,
+  receiver_user_id INT            NOT NULL,
+  currency_id      INT            NOT NULL DEFAULT 1,
+  valor            DECIMAL(12,2)  NOT NULL,
+  transaction_date DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (transaction_id),
+  CONSTRAINT fk_trans_sender
+    FOREIGN KEY (sender_user_id)   REFERENCES usuarios(user_id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_trans_receiver
+    FOREIGN KEY (receiver_user_id) REFERENCES usuarios(user_id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_trans_currency
+    FOREIGN KEY (currency_id)      REFERENCES monedas(currency_id)
+    ON DELETE RESTRICT ON UPDATE CASCADE,
+  INDEX idx_sender (sender_user_id),
+  INDEX idx_receiver (receiver_user_id),
+  INDEX idx_fecha (transaction_date)
+);
+```
+
+---
+
+## Verificar el modelo en DBeaver
+
+1. Ejecuta el script completo en DBeaver
+2. Clic derecho sobre `alke_wallet` → **View Diagram**
+3. DBeaver genera el diagrama ER con todas las relaciones visualizadas
+4. Verifica que todas las FK aparezcan con sus flechas hacia las tablas correctas
+
+---
+
+## Checklist de diseño
+
+Antes de dar por terminado un esquema, verifica:
+
+```
+✅ Cada tabla tiene una PRIMARY KEY
+✅ Cada columna obligatoria tiene NOT NULL
+✅ Los campos de texto variable usan VARCHAR con tamaño razonable
+✅ Los valores monetarios usan DECIMAL (no FLOAT)
+✅ Las relaciones N:N tienen tabla intermedia
+✅ Las FKs están nombradas explícitamente
+✅ Hay índices en columnas de JOIN y WHERE frecuentes
+✅ El esquema cumple al menos 3FN
+✅ El script incluye DROP DATABASE IF EXISTS al inicio (para poder reprocesarlo)
+✅ Los datos de prueba (INSERT) cubren casos borde (usuario sin transacciones, etc.)
+```

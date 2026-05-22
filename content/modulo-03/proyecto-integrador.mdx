@@ -1,0 +1,34 @@
+---
+titulo: "Proyecto integrador"
+tipo: proyecto
+duracion: 6h
+objetivos:
+  - Aplicar filter, map y reduce sobre un dataset real para generar reportes
+  - Usar objetos nativos Date y String para transformar y formatear datos
+  - Construir funciones puras reutilizables orientadas a un caso de negocio real
+  - Presentar resultados tabulados y legibles en consola
+---
+
+# Proyecto integrador
+
+## Sistema de Reportes de Inventario
+
+Construir un **sistema de reportes de inventario** que demuestre el dominio de los métodos de arrays y objetos nativos de JavaScript, aplicando programación funcional sobre un dataset real.
+
+**Dataset de trabajo:** [productos.json](/data/productos.json) — 20 productos con `id`, `nombre`, `precio`, `categoria`, `stock` y `fechaIngreso`.
+
+**Paso a paso**
+
+1. Carga el archivo `productos.json` en tu script e imprime el total de productos cargados.
+2. **Filtrado**: genera un array solo con productos disponibles (stock > 0) de la categoría `"ropa"`.
+3. **Transformación**: aplica un descuento del 15% a los productos de `"calzado"` usando `map`.
+4. **Estadísticas** con `reduce`: precio promedio de todos los productos, producto más caro (nombre y precio) y valor total del inventario (precio × stock).
+5. **Antigüedad**: usa `Date` para calcular cuántos días lleva cada producto en inventario desde `fechaIngreso`.
+6. **Reporte formateado**: usa métodos de `String` para imprimir un resumen tabulado en consola con todos los resultados.
+
+**Entregable**
+
+Sube el **link del repositorio GitHub** o un archivo `.zip` con el nombre `apellido_nombre_modulo3.zip` que contenga:
+- El archivo `index.js` con todas las funciones implementadas
+- El archivo `productos.json` usado como dataset
+- Captura de pantalla de la consola con el reporte generado

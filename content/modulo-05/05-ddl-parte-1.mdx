@@ -1,0 +1,318 @@
+---
+titulo: "Definición de Tablas DDL (Parte I)"
+descripcion: "CREATE DATABASE, CREATE TABLE, tipos de datos SQL y constraints: PK, FK, NOT NULL, UNIQUE, DEFAULT, AUTO_INCREMENT."
+tipo: "teoria"
+modulo: 5
+duracion: "4h"
+objetivos:
+  - "Distinguir DDL de DML y comprender cuándo usar cada uno."
+  - "Crear bases de datos y tablas con la sintaxis correcta."
+  - "Elegir el tipo de dato apropiado para cada columna."
+  - "Aplicar constraints: PRIMARY KEY, FOREIGN KEY, NOT NULL, UNIQUE, DEFAULT."
+  - "Usar AUTO_INCREMENT para identificadores automáticos."
+conceptosClave:
+  - "DDL"
+  - "CREATE TABLE"
+  - "Tipos de datos"
+  - "Constraint"
+  - "PRIMARY KEY"
+  - "FOREIGN KEY"
+  - "AUTO_INCREMENT"
+  - "NOT NULL / DEFAULT / UNIQUE"
+recursos:
+  - { nombre: "MySQL Docs — Data Types", url: "https://dev.mysql.com/doc/refman/8.0/en/data-types.html" }
+  - { nombre: "MySQL Docs — CREATE TABLE", url: "https://dev.mysql.com/doc/refman/8.0/en/create-table.html" }
+---
+
+# Definición de Tablas DDL (Parte I)
+
+**DDL (Data Definition Language)** es el subconjunto de SQL que define y modifica la **estructura** de la base de datos: bases de datos, tablas, índices y restricciones.
+
+| Categoría | Sentencias |
+|-----------|-----------|
+| **DDL** | `CREATE`, `ALTER`, `DROP`, `TRUNCATE`, `RENAME` |
+| **DML** | `SELECT`, `INSERT`, `UPDATE`, `DELETE` |
+
+La diferencia clave: DDL cambia el **esquema** (la estructura), DML cambia los **datos**.
+
+---
+
+## CREATE DATABASE
+
+```sql
+-- Crear la base de datos con codificación UTF-8
+CREATE DATABASE alke_wallet
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+-- Seleccionar la base de datos activa
+USE alke_wallet;
+
+-- Ver todas las bases de datos disponibles
+SHOW DATABASES;
+```
+
+<Callout type="info">
+`utf8mb4` es la codificación UTF-8 completa en MySQL (incluye emojis y caracteres especiales). Siempre úsala en lugar de `utf8` (que en MySQL está truncada a 3 bytes).
+</Callout>
+
+---
+
+## Tipos de datos
+
+Elegir el tipo correcto es fundamental: afecta el almacenamiento, la validación y el rendimiento.
+
+### Numéricos
+
+| Tipo | Rango | Uso |
+|------|-------|-----|
+| `TINYINT` | -128 a 127 | Edad, flags pequeños |
+| `SMALLINT` | -32768 a 32767 | Cantidades pequeñas |
+| `INT` / `INTEGER` | -2.1B a 2.1B | IDs, contadores |
+| `BIGINT` | -9.2Q a 9.2Q | IDs de sistemas grandes |
+| `DECIMAL(p,s)` | Exacto | Dinero, precios |
+| `FLOAT` / `DOUBLE` | Aproximado | Cálculos científicos |
+
+```sql
+-- DECIMAL(12, 2) = hasta 12 dígitos total, 2 decimales
+-- Máximo: 9,999,999,999.99
+saldo DECIMAL(12, 2) NOT NULL DEFAULT 0
+
+-- INT con UNSIGNED duplica el rango positivo (0 a 4.2B)
+cantidad INT UNSIGNED NOT NULL DEFAULT 0
+```
+
+<Callout type="warning">
+Nunca uses `FLOAT` o `DOUBLE` para dinero — tienen errores de precisión binaria. Usa siempre `DECIMAL(p,s)`.
+</Callout>
+
+### Texto
+
+| Tipo | Almacenamiento | Uso |
+|------|---------------|-----|
+| `CHAR(n)` | Fijo — siempre n bytes | Códigos de longitud fija (ISO, RUT) |
+| `VARCHAR(n)` | Variable — hasta n bytes | Nombres, emails, URLs |
+| `TEXT` | Hasta 65,535 bytes | Descripciones largas |
+| `MEDIUMTEXT` | Hasta 16 MB | Artículos, logs |
+| `LONGTEXT` | Hasta 4 GB | Documentos |
+
+```sql
+nombre     VARCHAR(80)  NOT NULL,
+correo     VARCHAR(120) NOT NULL UNIQUE,
+bio        TEXT,
+codigo_iso CHAR(3)      NOT NULL   -- ej: 'CLP', 'USD', 'EUR'
+```
+
+### Fechas y horas
+
+| Tipo | Formato | Uso |
+|------|---------|-----|
+| `DATE` | `YYYY-MM-DD` | Fecha sin hora (cumpleaños, vencimiento) |
+| `TIME` | `HH:MM:SS` | Solo hora |
+| `DATETIME` | `YYYY-MM-DD HH:MM:SS` | Timestamp sin zona horaria |
+| `TIMESTAMP` | `YYYY-MM-DD HH:MM:SS` | Timestamp, se actualiza automáticamente |
+| `YEAR` | `YYYY` | Solo año |
+
+```sql
+created_at    DATE      NOT NULL DEFAULT (CURRENT_DATE),
+updated_at    DATETIME  NOT NULL DEFAULT CURRENT_TIMESTAMP
+                        ON UPDATE CURRENT_TIMESTAMP,
+deleted_at    DATETIME  NULL
+```
+
+### Booleanos y enumerados
+
+```sql
+-- MySQL no tiene tipo BOOLEAN nativo — usa TINYINT(1)
+activo    TINYINT(1) NOT NULL DEFAULT 1,  -- 1=true, 0=false
+
+-- ENUM: lista fija de valores posibles
+estado    ENUM('pendiente', 'aprobado', 'rechazado') NOT NULL DEFAULT 'pendiente',
+tipo      ENUM('ingreso', 'egreso') NOT NULL
+```
+
+---
+
+## Constraints (Restricciones)
+
+Los constraints son **reglas que la base de datos aplica automáticamente** para garantizar la integridad de los datos.
+
+### NOT NULL
+
+```sql
+-- La columna no puede tener valor NULL (obligatoria)
+nombre VARCHAR(80) NOT NULL
+```
+
+### DEFAULT
+
+```sql
+-- Valor asignado automáticamente si no se provee
+saldo      DECIMAL(12,2) NOT NULL DEFAULT 0,
+created_at DATE          NOT NULL DEFAULT (CURRENT_DATE),
+activo     TINYINT(1)    NOT NULL DEFAULT 1
+```
+
+### UNIQUE
+
+```sql
+-- No puede haber dos filas con el mismo valor en esta columna
+correo VARCHAR(120) NOT NULL UNIQUE,
+
+-- UNIQUE compuesto (combinación única)
+UNIQUE KEY uq_usuario_moneda (user_id, currency_id)
+```
+
+### PRIMARY KEY
+
+```sql
+-- Identifica de forma única cada fila — implica NOT NULL + UNIQUE
+-- Forma 1: inline
+user_id INT AUTO_INCREMENT PRIMARY KEY,
+
+-- Forma 2: al final (necesario para PK compuesta)
+PRIMARY KEY (user_id),
+
+-- PK compuesta (ej: tabla intermedia N:N)
+PRIMARY KEY (user_id, project_id)
+```
+
+### AUTO_INCREMENT
+
+```sql
+-- MySQL asigna el siguiente entero disponible automáticamente
+user_id INT AUTO_INCREMENT PRIMARY KEY
+-- INSERT sin especificar user_id → MySQL usa 1, 2, 3...
+```
+
+---
+
+## CREATE TABLE — Sintaxis completa
+
+```sql
+CREATE TABLE usuarios (
+  -- Columnas con tipos y constraints inline
+  user_id    INT            AUTO_INCREMENT,
+  nombre     VARCHAR(80)    NOT NULL,
+  correo     VARCHAR(120)   NOT NULL,
+  contrasena VARCHAR(120)   NOT NULL,
+  saldo      DECIMAL(12,2)  NOT NULL DEFAULT 0,
+  created_at DATE           NOT NULL DEFAULT (CURRENT_DATE),
+
+  -- Constraints de tabla (al final)
+  PRIMARY KEY (user_id),
+  UNIQUE KEY  uq_correo (correo)
+);
+```
+
+```sql
+CREATE TABLE monedas (
+  currency_id     INT         AUTO_INCREMENT,
+  currency_name   VARCHAR(60) NOT NULL,
+  currency_symbol VARCHAR(10) NOT NULL,
+
+  PRIMARY KEY (currency_id)
+);
+```
+
+### FOREIGN KEY
+
+```sql
+CREATE TABLE transacciones (
+  transaction_id   INT            AUTO_INCREMENT,
+  sender_user_id   INT            NOT NULL,
+  receiver_user_id INT            NOT NULL,
+  valor            DECIMAL(12,2)  NOT NULL,
+  transaction_date DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  PRIMARY KEY (transaction_id),
+
+  -- Nombres de FK recomendados: fk_<tabla>_<columna>
+  CONSTRAINT fk_trans_sender
+    FOREIGN KEY (sender_user_id)   REFERENCES usuarios(user_id),
+  CONSTRAINT fk_trans_receiver
+    FOREIGN KEY (receiver_user_id) REFERENCES usuarios(user_id)
+);
+```
+
+<Callout type="info">
+**¿Qué hace la FOREIGN KEY?**
+- Garantiza que el valor de `sender_user_id` exista en la columna `user_id` de `usuarios`
+- Impide insertar una transacción con un ID de usuario inexistente
+- Por defecto, también impide borrar un usuario que tiene transacciones asociadas (puedes cambiar este comportamiento con `ON DELETE CASCADE`)
+</Callout>
+
+---
+
+## Orden de creación de tablas
+
+Debes crear las tablas **referenciadas primero** (las que tienen la PK), y las tablas con FK después:
+
+```sql
+-- ✅ Correcto: primero usuarios, luego transacciones
+CREATE TABLE usuarios (...);
+CREATE TABLE transacciones (
+  ...,
+  FOREIGN KEY (sender_user_id) REFERENCES usuarios(user_id)
+);
+
+-- ❌ Error: si intentas crear transacciones antes que usuarios,
+-- MySQL no puede crear la FK porque la tabla referenciada no existe
+```
+
+---
+
+## SHOW — Explorar el esquema
+
+```sql
+-- Ver tablas de la base de datos activa
+SHOW TABLES;
+
+-- Ver la definición completa de una tabla
+SHOW CREATE TABLE usuarios;
+
+-- Ver columnas con sus tipos y constraints
+DESCRIBE usuarios;
+-- o: SHOW COLUMNS FROM usuarios;
+```
+
+---
+
+## Script completo: Alke Wallet
+
+```sql
+DROP DATABASE IF EXISTS alke_wallet;
+CREATE DATABASE alke_wallet CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE alke_wallet;
+
+CREATE TABLE usuarios (
+  user_id    INT           AUTO_INCREMENT,
+  nombre     VARCHAR(80)   NOT NULL,
+  correo     VARCHAR(120)  NOT NULL,
+  contrasena VARCHAR(120)  NOT NULL,
+  saldo      DECIMAL(12,2) NOT NULL DEFAULT 0,
+  created_at DATE          NOT NULL DEFAULT (CURRENT_DATE),
+  PRIMARY KEY (user_id),
+  UNIQUE KEY uq_correo (correo)
+);
+
+CREATE TABLE monedas (
+  currency_id     INT         AUTO_INCREMENT,
+  currency_name   VARCHAR(60) NOT NULL,
+  currency_symbol VARCHAR(10) NOT NULL,
+  PRIMARY KEY (currency_id)
+);
+
+CREATE TABLE transacciones (
+  transaction_id   INT           AUTO_INCREMENT,
+  sender_user_id   INT           NOT NULL,
+  receiver_user_id INT           NOT NULL,
+  valor            DECIMAL(12,2) NOT NULL,
+  transaction_date DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (transaction_id),
+  CONSTRAINT fk_trans_sender
+    FOREIGN KEY (sender_user_id)   REFERENCES usuarios(user_id),
+  CONSTRAINT fk_trans_receiver
+    FOREIGN KEY (receiver_user_id) REFERENCES usuarios(user_id)
+);
+```

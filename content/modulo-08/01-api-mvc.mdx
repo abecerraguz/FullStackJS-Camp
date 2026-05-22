@@ -1,0 +1,572 @@
+---
+titulo: "API RESTful con MVC"
+tipo: proyecto
+duracion: 12h
+objetivos:
+  - Estructurar un servidor Express con el patrón MVC en capas bien separadas
+  - Implementar CRUD completo con respuestas JSON estandarizadas y HATEOAS
+  - Crear middlewares de validación, cache, logging y manejo global de errores
+  - Generar IDs únicos con uuid y persistir datos en un archivo JSON local
+recursos:
+  - { nombre: "Express 5 — documentación oficial", url: "https://expressjs.com/" }
+  - { nombre: "uuid en npm", url: "https://www.npmjs.com/package/uuid" }
+  - { nombre: "HATEOAS — Richardson Maturity Model", url: "https://restfulapi.net/richardson-maturity-model/" }
+---
+
+# API RESTful con MVC
+
+En este tema construirás una **API RESTful completa** aplicando el patrón **MVC** (Modelo–Vista–Controlador). El proyecto usa Node.js + Express y persiste los datos en un archivo `db.json` local, por lo que no necesitas base de datos para arrancarlo.
+
+## Arquitectura del proyecto
+
+```
+index.js                      ← Punto de entrada: instancia y arranca el Server
+models/
+  Server.js                   ← Clase Server: configura Express, middlewares y rutas
+v1/routes/
+  guitarras.routes.js         ← Router: define URLs y asocia middlewares + controladores
+controllers/
+  guitarras.controller.js     ← Controladores: reciben req, llaman al servicio, envían res
+services/
+  guitarras.service.js        ← Lógica de negocio: orquesta operaciones sobre los datos
+database/
+  Guitars.js                  ← Acceso a datos: lee y escribe db.json
+  db.json                     ← "Base de datos" en archivo JSON
+middlewares/
+  validateGuitar.js           ← Valida body antes de llegar al controlador
+  cacheHeaders.js             ← Añade Cache-Control según el método HTTP
+  requestInfo.js              ← Logger: imprime método, URL, status y duración
+  errorHandler.js             ← Captura errores lanzados con next(error)
+  notFound.js                 ← Responde 404 cuando ninguna ruta coincide
+utils/
+  ApiError.js                 ← Clase de error personalizada con statusCode y details
+  apiResponse.js              ← Helper para respuestas JSON estandarizadas
+  hateoas.js                  ← Genera los _links HATEOAS de cada recurso
+```
+
+### Flujo de una petición
+
+```
+Cliente HTTP
+    │
+    ▼
+middlewares globales (requestInfo → cacheHeaders → express.json)
+    │
+    ▼
+Router (v1/routes/guitarras.routes.js)
+    │
+    ▼
+Middleware de validación (validateGuitar.js)   ← solo en POST / PUT / PATCH
+    │
+    ▼
+Controlador (guitarras.controller.js)
+    │
+    ▼
+Servicio (guitarras.service.js)
+    │
+    ▼
+Capa de datos (database/Guitars.js → db.json)
+    │
+    ▼
+Respuesta JSON estandarizada al cliente
+```
+
+## Instalación
+
+```bash
+npm init -y
+npm install express uuid dotenv
+npm install -D nodemon
+```
+
+<Callout type="tip">
+**`--watch` — alternativa nativa de Node.js (v18.11+)**
+
+Desde Node v18.11 puedes usar `node --watch index.js` sin instalar `nodemon`. Añade en `package.json`: `"dev:native": "node --watch index.js"`.
+</Callout>
+
+`package.json` (scripts):
+
+```json
+{
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "dev:native": "node --watch index.js"
+  }
+}
+```
+
+## Utilidades base
+
+### ApiError — errores con código HTTP
+
+```javascript
+// utils/ApiError.js
+export class ApiError extends Error {
+  constructor(statusCode, message, details = null) {
+    super(message);
+    this.statusCode = statusCode;
+    this.details    = details;
+  }
+}
+```
+
+### apiResponse — respuestas estandarizadas
+
+```javascript
+// utils/apiResponse.js
+export const sendSuccess = ({
+  res,
+  statusCode = 200,
+  message    = 'Operación exitosa',
+  data       = undefined,
+  meta       = undefined,
+  links      = undefined,
+  location   = undefined   // URL del recurso recién creado (HTTP 201)
+}) => {
+  if (location) res.location(location);
+
+  const payload = { status: 'success', code: statusCode, message };
+  if (data  !== undefined) payload.data  = data;
+  if (meta  !== undefined) payload.meta  = meta;
+  if (links !== undefined) payload.links = links;
+
+  return res.status(statusCode).json(payload);
+};
+
+export const sendError = ({
+  res,
+  statusCode = 500,
+  message    = 'Ocurrió un error en el servidor',
+  details    = undefined
+}) => {
+  const payload = { status: 'error', code: statusCode, message };
+  if (details !== undefined && details !== null) payload.details = details;
+  return res.status(statusCode).json(payload);
+};
+```
+
+### HATEOAS — links de navegación
+
+```javascript
+// utils/hateoas.js
+export const getBaseUrl = (req) => `${req.protocol}://${req.get('host')}`;
+
+export const buildGuitarLinks = (req, id) => {
+  const base = `${getBaseUrl(req)}/api/v1/guitarras`;
+  return {
+    self:   { href: `${base}/${id}`, method: 'GET' },
+    update: { href: `${base}/${id}`, method: 'PUT' },
+    patch:  { href: `${base}/${id}`, method: 'PATCH' },
+    delete: { href: `${base}/${id}`, method: 'DELETE' },
+    list:   { href: base,            method: 'GET' }
+  };
+};
+
+export const buildCollectionLinks = (req, meta) => {
+  const base = `${getBaseUrl(req)}/api/v1/guitarras`;
+  return {
+    self: { href: `${base}?page=${meta.page}&limit=${meta.limit}`, method: 'GET' },
+    next: meta.hasNextPage ? { href: `${base}?page=${meta.page + 1}&limit=${meta.limit}`, method: 'GET' } : null,
+    prev: meta.hasPrevPage ? { href: `${base}?page=${meta.page - 1}&limit=${meta.limit}`, method: 'GET' } : null
+  };
+};
+```
+
+## Capa de datos
+
+```javascript
+// database/Guitars.js
+import fs   from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DB_PATH   = path.join(__dirname, 'db.json');
+
+export class GuitarsDB {
+  static read() {
+    const raw = fs.readFileSync(DB_PATH, 'utf-8');
+    return JSON.parse(raw);
+  }
+
+  static write(data) {
+    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2), 'utf-8');
+  }
+}
+```
+
+`db.json` (estructura inicial):
+
+```json
+{ "guitarras": [] }
+```
+
+## Servicio
+
+El servicio contiene **toda la lógica de negocio**: filtrado, paginación, ordenamiento.
+
+```javascript
+// services/guitarras.service.js
+import { v4 as uuidv4 } from 'uuid';
+import { GuitarsDB }    from '../database/Guitars.js';
+import { ApiError }     from '../utils/ApiError.js';
+
+export const getAllGuitarsService = (query = {}) => {
+  const { q = '', sortBy = 'name', order = 'asc', page = 1, limit = 10 } = query;
+
+  let items = GuitarsDB.read().guitarras;
+
+  // Filtro por búsqueda
+  if (q) {
+    const term = q.toLowerCase();
+    items = items.filter(g =>
+      g.name.toLowerCase().includes(term) ||
+      g.brand.toLowerCase().includes(term)
+    );
+  }
+
+  // Ordenamiento
+  items.sort((a, b) => {
+    const valA = String(a[sortBy] ?? '').toLowerCase();
+    const valB = String(b[sortBy] ?? '').toLowerCase();
+    return order === 'desc' ? valB.localeCompare(valA) : valA.localeCompare(valB);
+  });
+
+  // Paginación
+  const total      = items.length;
+  const pageNum    = Math.max(1, parseInt(page));
+  const limitNum   = Math.min(100, Math.max(1, parseInt(limit)));
+  const totalPages = Math.ceil(total / limitNum);
+  const start      = (pageNum - 1) * limitNum;
+
+  return {
+    items: items.slice(start, start + limitNum),
+    meta: {
+      total, count: Math.min(limitNum, total - start),
+      page: pageNum, limit: limitNum, totalPages,
+      hasPrevPage: pageNum > 1,
+      hasNextPage: pageNum < totalPages
+    }
+  };
+};
+
+export const getOneGuitarService = (id) => {
+  const { guitarras } = GuitarsDB.read();
+  const guitar = guitarras.find(g => g.id === id);
+  if (!guitar) throw new ApiError(404, `Guitarra con id "${id}" no encontrada`);
+  return guitar;
+};
+
+export const createNewGuitarService = (body) => {
+  const db      = GuitarsDB.read();
+  const guitar  = { id: uuidv4(), ...body, createdAt: new Date().toISOString() };
+  db.guitarras.push(guitar);
+  GuitarsDB.write(db);
+  return guitar;
+};
+
+export const replaceOneGuitarService = (id, body) => {
+  const db  = GuitarsDB.read();
+  const idx = db.guitarras.findIndex(g => g.id === id);
+  if (idx === -1) throw new ApiError(404, `Guitarra con id "${id}" no encontrada`);
+  const updated = { id, ...body, updatedAt: new Date().toISOString() };
+  db.guitarras[idx] = updated;
+  GuitarsDB.write(db);
+  return updated;
+};
+
+export const patchOneGuitarService = (id, body) => {
+  const db  = GuitarsDB.read();
+  const idx = db.guitarras.findIndex(g => g.id === id);
+  if (idx === -1) throw new ApiError(404, `Guitarra con id "${id}" no encontrada`);
+  const patched = { ...db.guitarras[idx], ...body, updatedAt: new Date().toISOString() };
+  db.guitarras[idx] = patched;
+  GuitarsDB.write(db);
+  return patched;
+};
+
+export const deleteOneGuitarService = (id) => {
+  const db  = GuitarsDB.read();
+  const idx = db.guitarras.findIndex(g => g.id === id);
+  if (idx === -1) throw new ApiError(404, `Guitarra con id "${id}" no encontrada`);
+  const [deleted] = db.guitarras.splice(idx, 1);
+  GuitarsDB.write(db);
+  return deleted;
+};
+```
+
+## Controlador
+
+```javascript
+// controllers/guitarras.controller.js
+import * as service from '../services/guitarras.service.js';
+import { sendSuccess }           from '../utils/apiResponse.js';
+import { buildCollectionLinks, buildGuitarLinks, getBaseUrl } from '../utils/hateoas.js';
+
+const enrich = (req, g) => ({ ...g, _links: buildGuitarLinks(req, g.id) });
+
+export const getAllGuitars = (req, res, next) => {
+  try {
+    const { items, meta } = service.getAllGuitarsService(req.query);
+    return sendSuccess({
+      res,
+      message: 'Guitarras obtenidas correctamente',
+      data: items.map(g => enrich(req, g)),
+      meta,
+      links: buildCollectionLinks(req, meta),
+    });
+  } catch (e) { next(e); }
+};
+
+export const getOneGuitar = (req, res, next) => {
+  try {
+    const guitar = service.getOneGuitarService(req.params.guitarId);
+    return sendSuccess({ res, data: enrich(req, guitar) });
+  } catch (e) { next(e); }
+};
+
+export const createdGuitar = (req, res, next) => {
+  try {
+    const guitar = service.createNewGuitarService(req.body);
+    return sendSuccess({
+      res, statusCode: 201,
+      message: 'Guitarra creada correctamente',
+      data: enrich(req, guitar),
+    });
+  } catch (e) { next(e); }
+};
+
+export const replaceOneGuitar = (req, res, next) => {
+  try {
+    const guitar = service.replaceOneGuitarService(req.params.guitarId, req.body);
+    return sendSuccess({ res, message: 'Guitarra reemplazada', data: enrich(req, guitar) });
+  } catch (e) { next(e); }
+};
+
+export const patchOneGuitar = (req, res, next) => {
+  try {
+    const guitar = service.patchOneGuitarService(req.params.guitarId, req.body);
+    return sendSuccess({ res, message: 'Guitarra actualizada', data: enrich(req, guitar) });
+  } catch (e) { next(e); }
+};
+
+export const deleteOneGuitar = (req, res, next) => {
+  try {
+    const guitar = service.deleteOneGuitarService(req.params.guitarId);
+    return sendSuccess({ res, message: 'Guitarra eliminada', data: enrich(req, guitar) });
+  } catch (e) { next(e); }
+};
+```
+
+## Middlewares
+
+### validateGuitar — validación completa del body
+
+El middleware valida **tipo y presencia** de todos los campos. En `PATCH` solo verifica los campos enviados (`partial = true`).
+
+```javascript
+// middlewares/validateGuitar.js
+import ApiError from '../utils/ApiError.js';
+
+const REQUIRED_FIELDS = ['name','brand','model','body','color','pickups','strings','value','stock'];
+
+const validateTextField  = (v) => typeof v === 'string' && v.trim() !== '';
+const validateNumberField = (v) => typeof v === 'number' && !Number.isNaN(v) && v >= 0;
+
+// Recorta espacios en los campos de texto antes de llegar al servicio
+const normalizePayload = (payload = {}) => ({
+  ...payload,
+  name:    typeof payload.name    === 'string' ? payload.name.trim()    : payload.name,
+  brand:   typeof payload.brand   === 'string' ? payload.brand.trim()   : payload.brand,
+  model:   typeof payload.model   === 'string' ? payload.model.trim()   : payload.model,
+  body:    typeof payload.body    === 'string' ? payload.body.trim()    : payload.body,
+  color:   typeof payload.color   === 'string' ? payload.color.trim()   : payload.color,
+  pickups: typeof payload.pickups === 'string' ? payload.pickups.trim() : payload.pickups,
+});
+
+const buildValidationErrors = (payload, partial = false) => {
+  const errors = [];
+
+  // POST / PUT: verifica que todos los campos requeridos estén presentes
+  if (!partial) {
+    const missing = REQUIRED_FIELDS.filter(
+      (f) => payload[f] === undefined || payload[f] === null || payload[f] === ''
+    );
+    if (missing.length) errors.push(`Faltan campos obligatorios: ${missing.join(', ')}`);
+  }
+
+  // PATCH: solo valida los campos que llegaron; POST/PUT: valida todos
+  const toCheck = partial ? Object.keys(payload) : REQUIRED_FIELDS;
+
+  for (const field of toCheck) {
+    const value = payload[field];
+    if (value === undefined) continue;
+
+    if (['name','brand','model','body','color','pickups'].includes(field) && !validateTextField(value))
+      errors.push(`El campo '${field}' debe ser un texto no vacío.`);
+
+    if (['strings','value','stock'].includes(field) && !validateNumberField(value))
+      errors.push(`El campo '${field}' debe ser un número mayor o igual a 0.`);
+  }
+
+  return errors;
+};
+
+export const validateCreateGuitar = (req, res, next) => {
+  req.body = normalizePayload(req.body);
+  const errors = buildValidationErrors(req.body, false);
+  if (errors.length) return next(new ApiError(422, 'Error de validación al crear la guitarra.', errors));
+  return next();
+};
+
+export const validatePutGuitar = (req, res, next) => {
+  req.body = normalizePayload(req.body);
+  const errors = buildValidationErrors(req.body, false);
+  if (errors.length) return next(new ApiError(422, 'Error de validación al reemplazar la guitarra.', errors));
+  return next();
+};
+
+export const validatePatchGuitar = (req, res, next) => {
+  req.body = normalizePayload(req.body);
+  const errors = buildValidationErrors(req.body, true);
+  if (errors.length) return next(new ApiError(422, 'Error de validación al actualizar la guitarra.', errors));
+  return next();
+};
+```
+
+<Callout type="tip">
+Usa **422 Unprocessable Entity** para errores de validación semántica del body (formato correcto pero datos inválidos), no 400. El 400 se reserva para peticiones mal formadas (JSON inválido, headers incorrectos).
+</Callout>
+
+### errorHandler — manejo global de errores
+
+```javascript
+// middlewares/errorHandler.js
+import { sendError } from '../utils/apiResponse.js';
+
+export const errorHandler = (err, req, res, next) => {
+  console.error('[ERROR_HANDLER]', err);
+
+  const statusCode   = err.statusCode || err.status || 500;
+  const isServerError = statusCode >= 500;
+
+  return sendError({
+    res,
+    statusCode,
+    message: err.message || 'Ocurrió un error en el servidor',
+    // SEGURIDAD: en errores 5xx nunca exponemos detalles internos al cliente
+    // (stack traces, rutas de archivos, queries SQL, etc.)
+    details: isServerError ? undefined : err.details,
+  });
+};
+```
+
+### cacheHeaders — Cache-Control por método
+
+```javascript
+// middlewares/cacheHeaders.js
+export const cacheForGetRequest = (seconds = 60) => (req, res, next) => {
+  // GET: permite que el navegador y proxies cacheen la respuesta
+  // POST / PUT / PATCH / DELETE: nunca cachear (siempre fresh)
+  res.set('Cache-Control', req.method === 'GET'
+    ? `public, max-age=${seconds}`
+    : 'no-store'
+  );
+  next();
+};
+```
+
+Usa el factory en la clase Server: `this.app.use(cacheForGetRequest(parseInt(process.env.API_CACHE_MAX_AGE) || 60));`
+
+## Router y clase Server
+
+```javascript
+// v1/routes/guitarras.routes.js
+import express from 'express';
+import { getAllGuitars, getOneGuitar, createdGuitar,
+         replaceOneGuitar, patchOneGuitar, deleteOneGuitar } from '../../controllers/guitarras.controller.js';
+import { validateCreateGuitar, validatePutGuitar, validatePatchGuitar } from '../../middlewares/validateGuitar.js';
+
+const router = express.Router();
+
+router.get('/guitarras',              getAllGuitars);
+router.get('/guitarras/:guitarId',    getOneGuitar);
+router.post('/guitarras',             validateCreateGuitar, createdGuitar);
+router.put('/guitarras/:guitarId',    validatePutGuitar,    replaceOneGuitar);
+router.patch('/guitarras/:guitarId',  validatePatchGuitar,  patchOneGuitar);
+router.delete('/guitarras/:guitarId', deleteOneGuitar);
+
+export default router;
+```
+
+```javascript
+// models/Server.js
+import express           from 'express';
+import guitarrasRoutes   from '../v1/routes/guitarras.routes.js';
+import { requestInfoMiddleware } from '../middlewares/requestInfo.js';
+import { errorHandlerMiddleware } from '../middlewares/errorHandler.js';
+import { notFoundMiddleware }     from '../middlewares/notFound.js';
+
+export class Server {
+  constructor() {
+    this.app  = express();
+    this.port = process.env.PORT || 3000;
+    this.middlewares();
+    this.routes();
+  }
+
+  middlewares() {
+    this.app.use(express.json());
+    this.app.use(requestInfoMiddleware);
+  }
+
+  routes() {
+    this.app.use('/api/v1', guitarrasRoutes);
+    this.app.use(notFoundMiddleware);
+    this.app.use(errorHandlerMiddleware);
+  }
+
+  listen() {
+    this.app.listen(this.port, () =>
+      console.log(`Servidor en http://localhost:${this.port}`)
+    );
+  }
+}
+```
+
+```javascript
+// index.js
+import 'dotenv/config';
+import { Server } from './models/Server.js';
+new Server().listen();
+```
+
+## Endpoints disponibles
+
+| Método | URL | Descripción |
+|--------|-----|-------------|
+| `GET` | `/api/v1` | Documentación de la API |
+| `GET` | `/api/v1/health` | Estado del servidor |
+| `GET` | `/api/v1/guitarras` | Listar guitarras (con filtro, sort, paginación) |
+| `GET` | `/api/v1/guitarras/:id` | Obtener una guitarra |
+| `POST` | `/api/v1/guitarras` | Crear guitarra |
+| `PUT` | `/api/v1/guitarras/:id` | Reemplazar guitarra |
+| `PATCH` | `/api/v1/guitarras/:id` | Actualizar campos |
+| `DELETE` | `/api/v1/guitarras/:id` | Eliminar guitarra |
+
+### Query params para GET /guitarras
+
+| Param | Default | Ejemplo |
+|-------|---------|---------|
+| `q` | `''` | `?q=fender` — busca en name y brand |
+| `sortBy` | `name` | `?sortBy=value` |
+| `order` | `asc` | `?order=desc` |
+| `page` | `1` | `?page=2` |
+| `limit` | `10` | `?limit=5` |
+
+<Callout type="warning">
+El pipeline de listado debe mantener el orden fijo: **filtro → sort → paginación**. Si inviertes el orden, la paginación operará sobre la colección sin filtrar y los resultados serán incorrectos.
+</Callout>

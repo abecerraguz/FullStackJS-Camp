@@ -1,0 +1,236 @@
+[
+  {
+    "slug": "modulo-01",
+    "numero": 1,
+    "titulo": "Fundamentos y Pensamiento Algorítmico",
+    "descripcion": "Introducción al perfil Full Stack, herramientas de IA como apoyo al aprendizaje, algoritmos y pseudocódigo con PSeInt.",
+    "stack": ["PSeInt", "IA Generativa"],
+    "duracion": "8h",
+    "disponible": true,
+    "temas": [
+      {
+        "slug": "01-algoritmos-pseudocodigo",
+        "titulo": "Algoritmos, IA y PSeInt",
+        "tipo": "teoria",
+        "duracion": "4h"
+      },
+      {
+        "slug": "proyecto-integrador",
+        "titulo": "Proyecto integrador",
+        "tipo": "proyecto",
+        "duracion": "4h"
+      }
+    ]
+  },
+  {
+    "slug": "modulo-02",
+    "numero": 2,
+    "titulo": "Fundamentos de Desarrollo Front End",
+    "descripcion": "HTML semántico, CSS responsivo, bases de JavaScript, jQuery (contexto histórico) y control de versiones con Git y GitHub.",
+    "stack": ["HTML5", "CSS3", "JavaScript", "jQuery", "Git", "GitHub"],
+    "duracion": "40h",
+    "disponible": true,
+    "temas": [
+      {
+        "slug": "01-html",
+        "titulo": "El Lenguaje HTML",
+        "tipo": "teoria",
+        "duracion": "6h"
+      },
+      {
+        "slug": "02-css-responsividad",
+        "titulo": "Estilos CSS y Responsividad",
+        "tipo": "teoria",
+        "duracion": "8h"
+      },
+      {
+        "slug": "03-bases-javascript",
+        "titulo": "Bases de JavaScript",
+        "tipo": "practica",
+        "duracion": "10h"
+      },
+      {
+        "slug": "04-git-github",
+        "titulo": "Git y GitHub",
+        "tipo": "practica",
+        "duracion": "6h"
+      },
+      {
+        "slug": "05-taller-wallet",
+        "titulo": "Taller: Wallet App",
+        "tipo": "proyecto",
+        "duracion": "10h"
+      },
+      {
+        "slug": "proyecto-integrador",
+        "titulo": "Proyecto integrador",
+        "tipo": "proyecto",
+        "duracion": "10h"
+      }
+    ]
+  },
+  {
+    "slug": "modulo-03",
+    "numero": 3,
+    "titulo": "JavaScript Intermedio",
+    "descripcion": "Matrices, funciones avanzadas y objetos en JavaScript. Manejo de scope, closures y métodos nativos de arrays y strings.",
+    "stack": ["JavaScript ES6+"],
+    "duracion": "24h",
+    "disponible": true,
+    "temas": [
+      {
+        "slug": "01-matrices",
+        "titulo": "Matrices y Arrays",
+        "tipo": "teoria",
+        "duracion": "4h"
+      },
+      {
+        "slug": "02-funciones-parte-1",
+        "titulo": "Funciones en JavaScript (Parte I)",
+        "tipo": "practica",
+        "duracion": "6h"
+      },
+      {
+        "slug": "03-funciones-parte-2",
+        "titulo": "Funciones en JavaScript (Parte II)",
+        "tipo": "practica",
+        "duracion": "6h"
+      },
+      {
+        "slug": "04-objetos-parte-1",
+        "titulo": "Objetos en JavaScript",
+        "tipo": "teoria",
+        "duracion": "4h"
+      },
+      {
+        "slug": "05-objetos-nativos",
+        "titulo": "Objetos Nativos de JavaScript",
+        "tipo": "practica",
+        "duracion": "4h"
+      },
+      {
+        "slug": "proyecto-integrador",
+        "titulo": "Proyecto integrador",
+        "tipo": "proyecto",
+        "duracion": "6h"
+      }
+    ]
+  },
+  {
+    "slug": "modulo-04",
+    "numero": 4,
+    "titulo": "JavaScript Avanzado y DOM",
+    "descripcion": "Programación orientada a objetos, características modernas de ES6+, manipulación del DOM, eventos y programación asíncrona con Fetch y async/await.",
+    "stack": ["JavaScript ES6+", "DOM API", "Fetch API"],
+    "duracion": "32h",
+    "disponible": true,
+    "temas": [
+      { "slug": "01-poo-parte-1", "titulo": "POO en JavaScript (Parte I)", "tipo": "teoria", "duracion": "6h" },
+      { "slug": "02-poo-parte-2", "titulo": "POO en JavaScript (Parte II)", "tipo": "practica", "duracion": "6h" },
+      { "slug": "03-es6", "titulo": "Características ES6+", "tipo": "teoria", "duracion": "6h" },
+      { "slug": "04-dom-eventos-async", "titulo": "DOM, Eventos y Async", "tipo": "proyecto", "duracion": "8h" },
+      { "slug": "05-consumo-api", "titulo": "Consumo de APIs con Fetch", "tipo": "practica", "duracion": "6h" },
+      { "slug": "proyecto-integrador", "titulo": "Proyecto integrador", "tipo": "proyecto", "duracion": "8h" }
+    ]
+  },
+  {
+    "slug": "modulo-05",
+    "numero": 5,
+    "titulo": "Bases de Datos Relacionales",
+    "descripcion": "Fundamentos de SQL, PostgreSQL, DBeaver, transacciones DDL/DML y modelado entidad-relación.",
+    "stack": ["PostgreSQL", "MySQL", "SQL", "DBeaver"],
+    "duracion": "44h",
+    "disponible": true,
+    "temas": [
+      { "slug": "01-intro-sql", "titulo": "Introducción a SQL", "tipo": "teoria", "duracion": "4h" },
+      { "slug": "02-dbeaver", "titulo": "Uso de DBeaver", "tipo": "practica", "duracion": "4h" },
+      { "slug": "03-dml-parte-1", "titulo": "Manipulación de Datos DML (Parte I)", "tipo": "practica", "duracion": "6h" },
+      { "slug": "04-dml-parte-2", "titulo": "Manipulación de Datos DML (Parte II)", "tipo": "practica", "duracion": "6h" },
+      { "slug": "05-ddl-parte-1", "titulo": "Definición de Tablas DDL (Parte I)", "tipo": "teoria", "duracion": "4h" },
+      { "slug": "06-ddl-parte-2", "titulo": "Definición de Tablas DDL (Parte II)", "tipo": "practica", "duracion": "4h" },
+      { "slug": "07-modelo-er", "titulo": "Modelo Entidad-Relación", "tipo": "proyecto", "duracion": "4h" },
+      { "slug": "08-gestion-usuarios-permisos", "titulo": "Gestión de Usuarios y Permisos", "tipo": "teoria", "duracion": "4h" },
+      { "slug": "09-importacion-exportacion-csv", "titulo": "Importación, Exportación y Backup", "tipo": "practica", "duracion": "4h" },
+      { "slug": "10-funciones-texto-fecha", "titulo": "Funciones de Texto y Fecha", "tipo": "practica", "duracion": "4h" },
+      { "slug": "proyecto-integrador", "titulo": "Proyecto integrador", "tipo": "proyecto", "duracion": "8h" }
+    ]
+  },
+  {
+    "slug": "modulo-06",
+    "numero": 6,
+    "titulo": "Node.js y Express",
+    "descripcion": "Entorno de ejecución Node.js, framework Express, middlewares, REST API, persistencia con FS, sesiones, gestión de procesos con PM2 y vistas con Handlebars.",
+    "stack": ["Node.js", "Express", "NPM", "PM2", "Handlebars", "FS"],
+    "duracion": "36h",
+    "disponible": true,
+    "temas": [
+      { "slug": "01-npm-fundamentos", "titulo": "NPM: Comandos y Gestión de Paquetes", "tipo": "teoria", "duracion": "2h" },
+      { "slug": "02-node-express-fundamentos", "titulo": "Node.js y Express: Fundamentos", "tipo": "teoria", "duracion": "3h" },
+      { "slug": "03-primeros-pasos-express", "titulo": "Primeros Pasos con Express", "tipo": "practica", "duracion": "1h" },
+      { "slug": "04-middleware-express", "titulo": "Middleware en Express", "tipo": "teoria", "duracion": "2h" },
+      { "slug": "05-rutas-y-respuestas", "titulo": "Rutas y Respuestas Estándar", "tipo": "practica", "duracion": "1h" },
+      { "slug": "06-rest-api-express", "titulo": "REST API Profesional con Express", "tipo": "proyecto", "duracion": "4h" },
+      { "slug": "07-gestion-paquetes-avanzado", "titulo": "Gestión Avanzada de Paquetes NPM", "tipo": "practica", "duracion": "2h" },
+      { "slug": "08-manipulacion-imagenes-jimp", "titulo": "Manipulación de Imágenes con Jimp", "tipo": "practica", "duracion": "2h" },
+      { "slug": "09-sesiones-express", "titulo": "Sesiones y Autenticación con Express", "tipo": "practica", "duracion": "2h" },
+      { "slug": "10-servidor-web-handlebars", "titulo": "Servidor Web Full-Stack con Handlebars", "tipo": "proyecto", "duracion": "4h" },
+      { "slug": "11-persistencia-fs-parte-1", "titulo": "Persistencia en Archivos con FS (Parte I)", "tipo": "teoria", "duracion": "3h" },
+      { "slug": "12-persistencia-fs-parte-2", "titulo": "Persistencia en Archivos con FS (Parte II)", "tipo": "proyecto", "duracion": "3h" },
+      { "slug": "13-escalabilidad-pm2", "titulo": "Escalabilidad con PM2 y Load Balancing", "tipo": "teoria", "duracion": "3h" },
+      { "slug": "14-gestion-procesos-node", "titulo": "Gestión de Procesos en Node.js", "tipo": "practica", "duracion": "4h" },
+      { "slug": "proyecto-integrador", "titulo": "Proyecto integrador", "tipo": "proyecto", "duracion": "8h" }
+    ]
+  },
+  {
+    "slug": "modulo-07",
+    "numero": 7,
+    "titulo": "Node.js + PostgreSQL",
+    "descripcion": "Conexión a base de datos PostgreSQL desde Node.js, patrón MVC, ORM con Sequelize y manejo de transacciones.",
+    "stack": ["Node.js", "Express", "PostgreSQL", "Sequelize", "pg"],
+    "duracion": "36h",
+    "disponible": true,
+    "temas": [
+      { "slug": "01-conexion-db", "titulo": "Conexión a PostgreSQL", "tipo": "teoria", "duracion": "4h" },
+      { "slug": "02-pool-async", "titulo": "Pool, rowMode y consultas parametrizadas", "tipo": "practica", "duracion": "6h" },
+      { "slug": "03-mvc", "titulo": "Arquitectura MVC con Express", "tipo": "teoria", "duracion": "8h" },
+      { "slug": "04-transacciones", "titulo": "Transacciones, Cursores y Retry", "tipo": "practica", "duracion": "8h" },
+      { "slug": "05-orm-sequelize", "titulo": "ORM con Sequelize", "tipo": "proyecto", "duracion": "10h" },
+      { "slug": "proyecto-integrador", "titulo": "Proyecto integrador", "tipo": "proyecto", "duracion": "10h" }
+    ]
+  },
+  {
+    "slug": "modulo-08",
+    "numero": 8,
+    "titulo": "API RESTful, File Upload y JWT",
+    "descripcion": "Construcción de una API RESTful completa con patrón MVC, subida de archivos con multipart, autenticación y autorización con JSON Web Tokens.",
+    "stack": ["Node.js", "Express", "JWT", "express-fileupload", "uuid"],
+    "duracion": "36h",
+    "disponible": true,
+    "temas": [
+      { "slug": "01-api-mvc",    "titulo": "API RESTful con MVC",          "tipo": "proyecto", "duracion": "12h" },
+      { "slug": "02-file-upload","titulo": "File Upload con Express",       "tipo": "practica", "duracion": "6h" },
+      { "slug": "03-jwt-intro",  "titulo": "Introducción a JWT",            "tipo": "teoria",   "duracion": "6h" },
+      { "slug": "04-api-jwt",    "titulo": "API con Autenticación JWT",     "tipo": "proyecto", "duracion": "12h" },
+      { "slug": "proyecto-integrador", "titulo": "Proyecto integrador",     "tipo": "proyecto", "duracion": "12h" }
+    ]
+  },
+  {
+    "slug": "modulo-09",
+    "numero": 9,
+    "titulo": "Frontend Profesional con React y Next.js",
+    "descripcion": "React con TypeScript, Next.js 15 App Router, gestión de estado con Zustand, microfrontends, Docker, CI/CD con GitHub Actions y despliegue en GCP.",
+    "stack": ["React 19", "Next.js 15", "TypeScript", "Zustand", "Docker", "GitHub Actions", "GCP"],
+    "duracion": "60h",
+    "disponible": true,
+    "temas": [
+      { "slug": "01-react-typescript", "titulo": "React con TypeScript", "tipo": "teoria", "duracion": "10h" },
+      { "slug": "02-nextjs-app-router", "titulo": "Next.js App Router", "tipo": "practica", "duracion": "12h" },
+      { "slug": "03-zustand", "titulo": "Gestión de Estado con Zustand", "tipo": "practica", "duracion": "6h" },
+      { "slug": "04-microfrontends", "titulo": "Microfrontends", "tipo": "teoria", "duracion": "6h" },
+      { "slug": "05-docker", "titulo": "Docker y Contenedorización", "tipo": "practica", "duracion": "8h" },
+      { "slug": "06-cicd", "titulo": "CI/CD con GitHub Actions", "tipo": "practica", "duracion": "6h" },
+      { "slug": "07-gcp-deploy", "titulo": "Despliegue en GCP Cloud Run", "tipo": "practica", "duracion": "6h" },
+      { "slug": "08-proyecto-final", "titulo": "Proyecto Final: FactorDash", "tipo": "proyecto", "duracion": "6h" }
+    ]
+  }
+]

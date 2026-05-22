@@ -1,0 +1,319 @@
+---
+titulo: "Taller: Wallet App"
+descripcion: "Proyecto integrador del módulo II: construye una billetera virtual con HTML, CSS y JavaScript vanilla que registre ingresos y gastos."
+tipo: "proyecto"
+modulo: 2
+duracion: "10h"
+objetivos:
+  - "Integrar HTML semántico, CSS responsivo y JavaScript en un proyecto real."
+  - "Manipular el DOM para agregar, mostrar y eliminar elementos dinámicamente."
+  - "Persistir datos en localStorage para que la app sobreviva al recargar la página."
+  - "Calcular y mostrar el saldo total, ingresos y gastos en tiempo real."
+  - "Publicar el proyecto en GitHub Pages."
+conceptosClave:
+  - "DOM manipulation"
+  - "Eventos (addEventListener)"
+  - "localStorage"
+  - "Template literals"
+  - "Array methods (filter, reduce)"
+recursos:
+  - { nombre: "MDN — localStorage", url: "https://developer.mozilla.org/es/docs/Web/API/Window/localStorage" }
+  - { nombre: "MDN — DOM Introduction", url: "https://developer.mozilla.org/es/docs/Web/API/Document_Object_Model/Introduction" }
+  - { nombre: "GitHub Pages — Publicar sitio", url: "https://pages.github.com/" }
+---
+
+# Taller: Wallet App
+
+En este taller construirás una **billetera virtual** que permite registrar transacciones (ingresos y gastos), visualizar el saldo actual y eliminar transacciones. Los datos se guardan en `localStorage` para que persistan al recargar la página.
+
+---
+
+## Resultado esperado
+
+Al finalizar, tendrás una aplicación web que:
+
+- Muestra el **saldo total**, total de **ingresos** y total de **gastos**.
+- Permite **agregar** una transacción con descripción y monto (positivo = ingreso, negativo = gasto).
+- Lista todas las transacciones con su color correspondiente (verde / rojo).
+- Permite **eliminar** una transacción.
+- Guarda todo en `localStorage` y lo recupera al recargar.
+
+---
+
+## Estructura del proyecto
+
+```
+taller-wallet/
+├── index.html
+├── css/
+│   └── styles.css
+├── js/
+│   └── app.js
+└── README.md
+```
+
+---
+
+## Paso 1 — HTML base
+
+```html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wallet App</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Wallet App</h1>
+
+    <!-- Saldo total -->
+    <section class="saldo">
+      <h2>Tu saldo</h2>
+      <p id="saldo-total" class="saldo-monto">$0</p>
+    </section>
+
+    <!-- Ingresos y gastos -->
+    <section class="resumen">
+      <div class="resumen-item ingreso">
+        <h3>Ingresos</h3>
+        <p id="total-ingresos">+$0</p>
+      </div>
+      <div class="resumen-item gasto">
+        <h3>Gastos</h3>
+        <p id="total-gastos">-$0</p>
+      </div>
+    </section>
+
+    <!-- Historial -->
+    <section class="historial">
+      <h3>Historial de transacciones</h3>
+      <ul id="lista-transacciones"></ul>
+    </section>
+
+    <!-- Formulario -->
+    <section class="formulario">
+      <h3>Nueva transacción</h3>
+      <form id="form-transaccion">
+        <label for="descripcion">Descripción</label>
+        <input
+          type="text"
+          id="descripcion"
+          placeholder="Ej: Salario, Arriendo..."
+          required
+        />
+
+        <label for="monto">
+          Monto (positivo = ingreso, negativo = gasto)
+        </label>
+        <input
+          type="number"
+          id="monto"
+          placeholder="Ej: 100000 o -50000"
+          required
+        />
+
+        <button type="submit">Agregar transacción</button>
+      </form>
+    </section>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
+```
+
+---
+
+## Paso 2 — JavaScript
+
+```javascript
+// js/app.js
+
+// ── Datos ────────────────────────────────────────────────────────────────────
+// Cargamos las transacciones desde localStorage (o array vacío si no hay nada)
+let transacciones = JSON.parse(localStorage.getItem("transacciones")) || [];
+
+// ── Utilidades ───────────────────────────────────────────────────────────────
+function formatearMonto(monto) {
+  return new Intl.NumberFormat("es-CL", {
+    style: "currency",
+    currency: "CLP",
+  }).format(monto);
+}
+
+function generarId() {
+  return Math.floor(Math.random() * 100_000_000);
+}
+
+// ── Actualizar UI ─────────────────────────────────────────────────────────────
+function actualizarUI() {
+  renderizarLista();
+  actualizarSaldo();
+  guardarEnStorage();
+}
+
+function renderizarLista() {
+  const lista = document.getElementById("lista-transacciones");
+  lista.innerHTML = "";
+
+  transacciones.forEach((t) => {
+    const li = document.createElement("li");
+    li.classList.add("transaccion", t.monto > 0 ? "ingreso" : "gasto");
+    li.innerHTML = `
+      <span class="descripcion">${t.descripcion}</span>
+      <span class="monto">${formatearMonto(t.monto)}</span>
+      <button
+        class="btn-eliminar"
+        data-id="${t.id}"
+        aria-label="Eliminar transacción ${t.descripcion}"
+      >✕</button>
+    `;
+    lista.appendChild(li);
+  });
+}
+
+function actualizarSaldo() {
+  const total = transacciones.reduce((acc, t) => acc + t.monto, 0);
+  const ingresos = transacciones
+    .filter((t) => t.monto > 0)
+    .reduce((acc, t) => acc + t.monto, 0);
+  const gastos = transacciones
+    .filter((t) => t.monto < 0)
+    .reduce((acc, t) => acc + t.monto, 0);
+
+  document.getElementById("saldo-total").textContent = formatearMonto(total);
+  document.getElementById("total-ingresos").textContent = `+${formatearMonto(ingresos)}`;
+  document.getElementById("total-gastos").textContent = formatearMonto(gastos);
+}
+
+// ── Persistencia ──────────────────────────────────────────────────────────────
+function guardarEnStorage() {
+  localStorage.setItem("transacciones", JSON.stringify(transacciones));
+}
+
+// ── Eventos ───────────────────────────────────────────────────────────────────
+document.getElementById("form-transaccion").addEventListener("submit", (e) => {
+  e.preventDefault();
+
+  const descripcion = document.getElementById("descripcion").value.trim();
+  const monto = parseFloat(document.getElementById("monto").value);
+
+  if (!descripcion || isNaN(monto)) return;
+
+  transacciones.push({ id: generarId(), descripcion, monto });
+  actualizarUI();
+
+  e.target.reset();
+  document.getElementById("descripcion").focus();
+});
+
+// Delegación de eventos para los botones de eliminar
+document.getElementById("lista-transacciones").addEventListener("click", (e) => {
+  const btn = e.target.closest(".btn-eliminar");
+  if (!btn) return;
+
+  const id = Number(btn.dataset.id);
+  transacciones = transacciones.filter((t) => t.id !== id);
+  actualizarUI();
+});
+
+// ── Inicialización ────────────────────────────────────────────────────────────
+actualizarUI();
+```
+
+---
+
+## Paso 3 — CSS básico
+
+```css
+/* css/styles.css */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #f1f5f9;
+  margin: 0;
+  padding: 24px 16px;
+}
+
+.container {
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+h1 { text-align: center; color: #1e293b; }
+
+/* Saldo */
+.saldo { text-align: center; margin-bottom: 24px; }
+.saldo-monto { font-size: 2.5rem; font-weight: 700; color: #1e293b; margin: 0; }
+
+/* Resumen */
+.resumen {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.resumen-item {
+  flex: 1;
+  padding: 16px;
+  border-radius: 8px;
+  text-align: center;
+}
+.resumen-item h3 { margin: 0 0 8px; font-size: 0.875rem; text-transform: uppercase; }
+.resumen-item p  { margin: 0; font-size: 1.25rem; font-weight: 600; }
+.resumen-item.ingreso { background: #dcfce7; color: #16a34a; }
+.resumen-item.gasto   { background: #fee2e2; color: #dc2626; }
+
+/* Lista */
+.lista-transacciones { list-style: none; padding: 0; }
+.transaccion {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  background: white;
+  border-radius: 8px;
+  border-left: 4px solid transparent;
+}
+.transaccion.ingreso { border-left-color: #16a34a; }
+.transaccion.gasto   { border-left-color: #dc2626; }
+
+/* Formulario */
+.formulario { background: white; padding: 24px; border-radius: 12px; }
+label   { display: block; font-size: 0.875rem; font-weight: 500; margin: 12px 0 4px; }
+input   { width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 1rem; }
+button[type="submit"] {
+  width: 100%;
+  margin-top: 16px;
+  padding: 12px;
+  background: #6366f1;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+button[type="submit"]:hover { background: #4f46e5; }
+```
+
+---
+
+## Paso 4 — Publicar en GitHub Pages
+
+1. Sube el proyecto a un repositorio público en GitHub.
+2. Ve a **Settings → Pages**.
+3. En **Source**, selecciona la rama `main` y la carpeta `/ (root)`.
+4. Guarda — GitHub te dará una URL pública en ~1 minuto.
+
+---
+
+## Desafíos extra
+
+- **Desafío A:** Agrega una categoría a cada transacción (Alimentación, Transporte, Salud, etc.) y muestra un ícono o color diferente por categoría.
+- **Desafío B:** Implementa un filtro para mostrar solo ingresos o solo gastos.
+- **Desafío C:** Agrega un gráfico de dona con la distribución de gastos por categoría (usa `<canvas>` y Chart.js o SVG manual).

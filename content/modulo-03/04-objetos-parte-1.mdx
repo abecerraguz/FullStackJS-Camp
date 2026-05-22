@@ -1,0 +1,125 @@
+---
+titulo: "Objetos en JavaScript"
+descripcion: "Objetos literales, propiedades, métodos, desestructuración y el operador spread en objetos."
+tipo: "teoria"
+modulo: 3
+duracion: "4h"
+objetivos:
+  - "Crear objetos literales con propiedades y métodos."
+  - "Acceder a propiedades con notación punto y corchetes."
+  - "Desestructurar objetos en variables."
+  - "Usar spread para copiar y combinar objetos."
+  - "Iterar propiedades con for...in y Object.entries."
+conceptosClave:
+  - "Objeto literal"
+  - "Propiedad"
+  - "Método"
+  - "Desestructuración de objeto"
+  - "Spread de objeto"
+  - "this"
+recursos:
+  - { nombre: "JavaScript.info — Objetos", url: "https://es.javascript.info/object" }
+---
+
+# Objetos en JavaScript
+
+Un **objeto** es una colección de pares **clave: valor** que agrupa datos relacionados y comportamientos (métodos).
+
+## Crear y acceder a objetos
+
+```javascript
+// Objeto literal
+const estudiante = {
+  nombre: "Ana",
+  apellido: "García",
+  edad: 22,
+  activo: true,
+  notas: [6.5, 5.0, 7.0],
+
+  // Método: función dentro de un objeto
+  promedioNotas() {
+    const suma = this.notas.reduce((acc, n) => acc + n, 0);
+    return (suma / this.notas.length).toFixed(1);
+  },
+};
+
+// Notación punto
+console.log(estudiante.nombre);          // "Ana"
+console.log(estudiante.promedioNotas()); // "6.2"
+
+// Notación corchetes (útil cuando la clave viene de una variable)
+const propiedad = "edad";
+console.log(estudiante[propiedad]); // 22
+```
+
+## Desestructuración
+
+```javascript
+const { nombre, edad, notas } = estudiante;
+console.log(nombre); // "Ana"
+console.log(edad);   // 22
+
+// Con renombre
+const { nombre: studentName, edad: studentAge } = estudiante;
+console.log(studentName); // "Ana"
+
+// En parámetros de función
+function mostrar({ nombre, apellido }) {
+  return `${nombre} ${apellido}`;
+}
+console.log(mostrar(estudiante)); // "Ana García"
+```
+
+## Spread y merge de objetos
+
+```javascript
+// Copia superficial
+const copia = { ...estudiante };
+
+// Actualizar propiedades (sin mutar el original)
+const actualizado = { ...estudiante, edad: 23 };
+
+// Combinar objetos
+const datosExtra = { carrera: "Ingeniería", semestre: 4 };
+const completo = { ...estudiante, ...datosExtra };
+```
+
+## Iterar propiedades
+
+```javascript
+// for...in
+for (const clave in estudiante) {
+  console.log(`${clave}: ${estudiante[clave]}`);
+}
+
+// Object.entries (retorna array de [clave, valor])
+Object.entries(estudiante).forEach(([clave, valor]) => {
+  console.log(`${clave} → ${valor}`);
+});
+
+// Object.keys y Object.values
+console.log(Object.keys(estudiante));   // array de claves
+console.log(Object.values(estudiante)); // array de valores
+```
+
+<CodeEditor
+  initialCode={`// Ejercicio: gestión de inventario
+const productos = [
+  { id: 1, nombre: "Laptop",  precio: 800000, stock: 3 },
+  { id: 2, nombre: "Mouse",   precio: 25000,  stock: 0 },
+  { id: 3, nombre: "Monitor", precio: 350000, stock: 5 },
+];
+
+// Tarea: actualiza el stock del producto con id=2 a 10
+// usando spread (sin mutar el array original)
+
+function solution() {
+  const actualizados = productos.map(p =>
+    p.id === 2 ? { ...p, stock: 10 } : p
+  );
+  return actualizados.map(p =>
+    \`\${p.nombre}: stock=\${p.stock}\`
+  ).join("\\n");
+}
+`}
+/>

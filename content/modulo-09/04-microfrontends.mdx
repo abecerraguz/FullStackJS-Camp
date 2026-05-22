@@ -1,0 +1,227 @@
+---
+titulo: "Microfrontends"
+tipo: teoria
+duracion: 6h
+objetivos:
+  - Entender cuándo la arquitectura microfrontend resuelve un problema real
+  - Configurar Module Federation en Webpack 5 con shell y remote
+  - Consumir un componente remoto con React.lazy y Suspense
+  - Implementar comunicación entre microfrontends mediante CustomEvent
+recursos:
+  - { nombre: "Module Federation Docs", url: "https://module-federation.io/" }
+  - { nombre: "Martin Fowler — Micro Frontends", url: "https://martinfowler.com/articles/micro-frontends.html" }
+  - { nombre: "Webpack 5 Module Federation", url: "https://webpack.js.org/concepts/module-federation/" }
+  - { nombre: "NX Monorepo + Module Federation", url: "https://nx.dev/concepts/module-federation/micro-frontend-architecture" }
+---
+
+# Microfrontends
+
+Un **microfrontend** es un enfoque arquitectónico donde una aplicación web grande se divide en partes más pequeñas e independientes que pueden ser desarrolladas, testeadas y desplegadas por equipos separados.
+
+## Monolito vs Microfrontends
+
+```
+MONOLITO FRONTEND (1 repositorio, 1 equipo, 1 deploy):
+┌─────────────────────────────────────┐
+│           Frontend Monolítico       │
+│  ┌────────┐ ┌────────┐ ┌─────────┐ │
+│  │ Módulo │ │ Módulo │ │ Módulo  │ │
+│  │  Auth  │ │Catalog.│ │ Pedidos │ │
+│  └────────┘ └────────┘ └─────────┘ │
+└─────────────────────────────────────┘
+        │ Deploy único → un cambio bloquea todo
+
+MICROFRONTENDS (múltiples repos, equipos y deploys):
+┌─────────────────────────────────────┐
+│         Shell Application           │
+└──────────────┬──────────────────────┘
+               │ carga dinámicamente
+   ┌───────────┼───────────┐
+   ▼           ▼           ▼
+┌──────┐  ┌────────┐  ┌─────────┐
+│ MFE  │  │  MFE   │  │   MFE   │
+│ Auth │  │ Catál. │  │Pedidos  │
+└──────┘  └────────┘  └─────────┘
+Equipo A   Equipo B    Equipo C
+Deploy A   Deploy B    Deploy C
+```
+
+## ¿Cuándo usar Microfrontends?
+
+| Situación | ¿Microfrontends? |
+|---|---|
+| Empresa con múltiples equipos trabajando en la misma app | ✅ Sí |
+| Diferentes partes de la app con ciclos de deploy distintos | ✅ Sí |
+| Migración gradual de una app legacy a tecnología moderna | ✅ Sí |
+| Startup pequeña (1–2 devs) con una sola app | ✗ No |
+| App simple con dominio único y equipo pequeño | ✗ No |
+| Antes de necesitarlo ("por si acaso") | ✗ No |
+
+<Callout type="warning">
+Los microfrontends añaden complejidad real: coordinación de versiones, overhead de red, testing distribuido. Evalúa si el problema de escala realmente lo justifica antes de adoptarlos.
+</Callout>
+
+## Module Federation con Webpack 5
+
+Module Federation permite que una aplicación (shell) cargue código de otra aplicación (remote) **en tiempo de ejecución**, sin necesidad de instalarla como dependencia.
+
+### Configuración del Shell (host)
+
+```js
+// shell/webpack.config.js
+const { ModuleFederationPlugin } = require('webpack').container;
+
+module.exports = {
+  plugins: [
+    new ModuleFederationPlugin({
+      name: 'shell',
+      remotes: {
+        // Nombre local → nombre del remote @ URL del entry point
+        catalogoMfe: 'catalogoMfe@http://localhost:3001/remoteEntry.js',
+      },
+      shared: {
+        // Compartir React evita cargar dos instancias
+        react: { singleton: true, requiredVersion: '^19.0.0' },
+        'react-dom': { singleton: true, requiredVersion: '^19.0.0' },
+      },
+    }),
+  ],
+};
+```
+
+### Configuración del Remote (catálogo)
+
+```js
+// catalogo-mfe/webpack.config.js
+const { ModuleFederationPlugin } = require('webpack').container;
+
+module.exports = {
+  output: {
+    publicPath: 'auto', // necesario para Module Federation
+  },
+  plugins: [
+    new ModuleFederationPlugin({
+      name: 'catalogoMfe',
+      filename: 'remoteEntry.js', // archivo que expone el módulo
+      exposes: {
+        // Alias local → ruta del archivo a exponer
+        './GuitarCatalog': './src/components/GuitarCatalog',
+        './routes': './src/routes',
+      },
+      shared: {
+        react: { singleton: true, requiredVersion: '^19.0.0' },
+        'react-dom': { singleton: true, requiredVersion: '^19.0.0' },
+      },
+    }),
+  ],
+};
+```
+
+### Consumir el Remote en el Shell
+
+```tsx
+// shell/src/pages/Catalogo.tsx
+import React, { lazy, Suspense } from 'react';
+
+// React.lazy + import dinámico del módulo federado
+const GuitarCatalog = lazy(() => import('catalogoMfe/GuitarCatalog'));
+
+export function CatalogoPage() {
+  return (
+    <Suspense fallback={<div>Cargando catálogo...</div>}>
+      <GuitarCatalog />
+    </Suspense>
+  );
+}
+```
+
+## Comunicación entre Microfrontends
+
+Los MFEs son independientes, por lo que **no pueden importarse entre sí directamente**. La comunicación se hace mediante eventos del navegador o un bus de eventos compartido.
+
+```ts
+// Patrón 1: CustomEvent nativo del navegador
+// ─────────────────────────────────────────
+// En el MFE que emite (catalogo):
+function handleGuitarSelect(id: number) {
+  const event = new CustomEvent('guitar:selected', {
+    detail: { id },
+    bubbles: true,
+  });
+  document.dispatchEvent(event);
+}
+
+// En el shell u otro MFE que escucha:
+useEffect(() => {
+  const handler = (e: Event) => {
+    const { id } = (e as CustomEvent<{ id: number }>).detail;
+    console.log('Guitarra seleccionada:', id);
+    // navegar a detalle, abrir modal, etc.
+  };
+
+  document.addEventListener('guitar:selected', handler);
+  return () => document.removeEventListener('guitar:selected', handler);
+}, []);
+```
+
+```ts
+// Patrón 2: Shared event bus (más estructurado)
+// ─────────────────────────────────────────────
+// shared-libs/eventBus.ts  (módulo compartido)
+type EventHandler = (payload: unknown) => void;
+
+const listeners: Record<string, EventHandler[]> = {};
+
+export const eventBus = {
+  emit(event: string, payload: unknown) {
+    listeners[event]?.forEach((fn) => fn(payload));
+  },
+  on(event: string, handler: EventHandler) {
+    if (!listeners[event]) listeners[event] = [];
+    listeners[event].push(handler);
+  },
+  off(event: string, handler: EventHandler) {
+    listeners[event] = listeners[event]?.filter((fn) => fn !== handler) ?? [];
+  },
+};
+```
+
+## Alternativas a Module Federation
+
+| Alternativa | Descripción | Casos de uso |
+|---|---|---|
+| **iframes** | Aislamiento máximo, integración mínima | Legacy systems, alta seguridad |
+| **Web Components** | Estándar del navegador, framework-agnostic | Widgets reutilizables |
+| **Single-spa** | Orquestador de múltiples frameworks | Migración gradual |
+| **Module Federation** | Carga dinámica con Webpack 5 | React, Angular, Vue, JS vanilla |
+| **Nx Monorepo** | Monorepo con Module Federation integrado | Equipos grandes, proyectos complejos |
+
+## Estructura de proyecto con Module Federation
+
+```
+microfrontends/
+├── shell/                    ← Host: integra todos los MFEs
+│   ├── src/
+│   │   ├── App.tsx
+│   │   └── pages/
+│   │       ├── Home.tsx
+│   │       └── Catalogo.tsx  ← importa catalogoMfe/GuitarCatalog
+│   └── webpack.config.js
+│
+├── catalogo-mfe/             ← Remote: expone GuitarCatalog
+│   ├── src/
+│   │   └── components/
+│   │       └── GuitarCatalog.tsx
+│   └── webpack.config.js
+│
+└── shared-libs/              ← Código compartido (types, eventBus)
+    └── src/
+        ├── types/guitarra.ts
+        └── eventBus.ts
+```
+
+## Ejercicios propuestos
+
+1. Investiga qué problema concreto tienen empresas como Spotify, Zalando o IKEA que los llevó a adoptar microfrontends. ¿Aplica a FactorDash?
+2. Crea un proyecto mínimo con dos apps Vite (shell + remote) y configura Module Federation con el plugin `@originjs/vite-plugin-federation`.
+3. Implementa el patrón de `CustomEvent` para que el MFE de catálogo notifique al shell cuando el usuario agrega un ítem al carrito.

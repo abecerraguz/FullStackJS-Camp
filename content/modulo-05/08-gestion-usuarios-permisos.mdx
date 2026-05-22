@@ -1,0 +1,268 @@
+---
+titulo: "Gestión de Usuarios y Permisos"
+descripcion: "Crear usuarios de base de datos, asignar roles, otorgar y revocar privilegios en MySQL y PostgreSQL."
+tipo: "teoria"
+modulo: 5
+duracion: "4h"
+objetivos:
+  - "Crear y eliminar usuarios de base de datos."
+  - "Asignar contraseñas seguras y fechas de expiración."
+  - "Otorgar privilegios con GRANT y revocarlos con REVOKE."
+  - "Diferenciar roles de administrador, lectura y escritura."
+  - "Listar usuarios y sus permisos actuales."
+conceptosClave:
+  - "CREATE USER"
+  - "DROP USER"
+  - "GRANT"
+  - "REVOKE"
+  - "Privilegio"
+  - "Rol"
+  - "SUPERUSER"
+  - "Principio de mínimo privilegio"
+recursos:
+  - { nombre: "MySQL Docs — CREATE USER", url: "https://dev.mysql.com/doc/refman/8.0/en/create-user.html" }
+  - { nombre: "PostgreSQL Docs — GRANT", url: "https://www.postgresql.org/docs/current/sql-grant.html" }
+---
+
+# Gestión de Usuarios y Permisos
+
+En un entorno de producción, **nunca se usa el usuario `root`** para conectar la aplicación a la base de datos. Se crean usuarios específicos con los permisos mínimos necesarios. Este principio se llama **Principio de Mínimo Privilegio**.
+
+```
+root / superadmin
+  └── usuario_app     → solo SELECT, INSERT, UPDATE, DELETE sobre su BD
+  └── usuario_reporte → solo SELECT (solo lectura)
+  └── usuario_admin   → DDL completo sobre su BD
+```
+
+---
+
+## MySQL — Gestión de usuarios
+
+### Crear usuario
+
+```sql
+-- Sintaxis: CREATE USER 'nombre'@'host' IDENTIFIED BY 'contraseña';
+-- 'localhost' = solo conexiones locales
+-- '%'         = conexiones desde cualquier host (cuidado en producción)
+
+CREATE USER 'app_user'@'localhost' IDENTIFIED BY 'P@ssw0rd_seguro!';
+
+-- Usuario solo para reportes (sin contraseña expira, acceso remoto)
+CREATE USER 'reporter'@'%' IDENTIFIED BY 'Rep0rt3r_2024!';
+```
+
+<Callout type="warning">
+Nunca uses contraseñas cortas o sin caracteres especiales en producción. Una contraseña segura tiene al menos 12 caracteres, mayúsculas, números y símbolos.
+</Callout>
+
+### Ver usuarios existentes
+
+```sql
+-- Listar todos los usuarios
+SELECT User, Host FROM mysql.user;
+
+-- Ver privilegios de un usuario específico
+SHOW GRANTS FOR 'app_user'@'localhost';
+```
+
+### Eliminar usuario
+
+```sql
+DROP USER IF EXISTS 'app_user'@'localhost';
+```
+
+---
+
+## GRANT — Otorgar privilegios
+
+```sql
+-- Otorgar todos los privilegios sobre una BD específica
+GRANT ALL PRIVILEGES ON alke_wallet.* TO 'app_user'@'localhost';
+
+-- Solo SELECT y INSERT (usuario de aplicación restringido)
+GRANT SELECT, INSERT ON alke_wallet.* TO 'app_user'@'localhost';
+
+-- Solo SELECT (usuario de reportes — solo lectura)
+GRANT SELECT ON alke_wallet.* TO 'reporter'@'%';
+
+-- SELECT sobre una tabla específica
+GRANT SELECT ON alke_wallet.usuarios TO 'reporter'@'%';
+
+-- Aplicar los cambios de permisos (buena práctica después de GRANT/REVOKE)
+FLUSH PRIVILEGES;
+```
+
+### Tipos de privilegios comunes
+
+| Privilegio | Descripción |
+|-----------|-------------|
+| `ALL PRIVILEGES` | Todos los permisos disponibles |
+| `SELECT` | Leer datos |
+| `INSERT` | Insertar filas |
+| `UPDATE` | Modificar filas |
+| `DELETE` | Eliminar filas |
+| `CREATE` | Crear tablas y bases de datos |
+| `DROP` | Eliminar tablas y bases de datos |
+| `ALTER` | Modificar estructura de tablas |
+| `INDEX` | Crear y eliminar índices |
+| `GRANT OPTION` | Puede otorgar sus propios privilegios a otros usuarios |
+
+---
+
+## REVOKE — Revocar privilegios
+
+```sql
+-- Revocar un privilegio específico
+REVOKE DELETE ON alke_wallet.* FROM 'app_user'@'localhost';
+
+-- Revocar todos los privilegios
+REVOKE ALL PRIVILEGES ON alke_wallet.* FROM 'app_user'@'localhost';
+
+FLUSH PRIVILEGES;
+```
+
+---
+
+## Cambiar contraseña
+
+```sql
+-- MySQL 8.0+
+ALTER USER 'app_user'@'localhost' IDENTIFIED BY 'Nueva_P@ss_2024!';
+FLUSH PRIVILEGES;
+```
+
+---
+
+## PostgreSQL — Gestión de usuarios
+
+PostgreSQL usa el concepto de **roles** (un rol puede ser un usuario o un grupo).
+
+### Crear rol / usuario
+
+```sql
+-- CREATE USER es un alias de CREATE ROLE ... WITH LOGIN
+CREATE USER app_user WITH PASSWORD 'P@ssw0rd_seguro!';
+
+-- Usuario con fecha de expiración (ej: contratista temporal)
+CREATE USER temp_contractor
+  WITH PASSWORD 'Temp2024!'
+  VALID UNTIL '2024-12-31';
+
+-- Superusuario (equivale a root en MySQL — úsalo con precaución)
+CREATE USER admin_db WITH SUPERUSER PASSWORD 'Admin_P@ss!';
+
+-- Usuario sin capacidad de crear bases de datos
+CREATE USER readonly_user
+  WITH PASSWORD 'ReadOnly!'
+  NOCREATEDB
+  NOSUPERUSER;
+```
+
+### Ver usuarios / roles
+
+```sql
+-- En psql (cliente de línea de comandos)
+\du
+
+-- Con SQL
+SELECT rolname, rolsuper, rolcreatedb, rolcanlogin
+FROM pg_roles
+WHERE rolcanlogin = true;
+```
+
+### Eliminar usuario
+
+```sql
+-- Primero revocar todos sus permisos
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM app_user;
+
+DROP USER IF EXISTS app_user;
+```
+
+### GRANT en PostgreSQL
+
+```sql
+-- Conectar a la BD objetivo primero
+\c alke_wallet
+
+-- Dar permiso de conexión a la BD
+GRANT CONNECT ON DATABASE alke_wallet TO app_user;
+
+-- Dar permisos en el esquema
+GRANT USAGE ON SCHEMA public TO app_user;
+
+-- Dar permisos sobre todas las tablas del esquema
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
+
+-- Solo lectura
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly_user;
+
+-- Para tablas futuras (aplica automáticamente a nuevas tablas)
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+  GRANT SELECT ON TABLES TO readonly_user;
+```
+
+### REVOKE en PostgreSQL
+
+```sql
+REVOKE DELETE ON ALL TABLES IN SCHEMA public FROM app_user;
+```
+
+---
+
+## Roles de grupo (PostgreSQL)
+
+En PostgreSQL puedes crear roles sin login y usarlos como grupos:
+
+```sql
+-- Crear rol-grupo (sin LOGIN)
+CREATE ROLE lectura;
+CREATE ROLE escritura;
+
+-- Asignar permisos al rol
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO lectura;
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO escritura;
+
+-- Asignar el rol a un usuario
+GRANT lectura  TO readonly_user;
+GRANT escritura TO app_user;
+```
+
+---
+
+## Esquema de permisos recomendado para una app
+
+```sql
+-- MySQL: 3 niveles de acceso para Alke Wallet
+
+-- 1) Usuario de aplicación (backend Node.js)
+CREATE USER 'alke_app'@'localhost' IDENTIFIED BY 'App_S3cur3!';
+GRANT SELECT, INSERT, UPDATE, DELETE ON alke_wallet.* TO 'alke_app'@'localhost';
+
+-- 2) Usuario de reportes (dashboards, BI)
+CREATE USER 'alke_report'@'%' IDENTIFIED BY 'R3p0rt_Only!';
+GRANT SELECT ON alke_wallet.* TO 'alke_report'@'%';
+
+-- 3) Usuario de migraciones (CI/CD, scripts de schema)
+CREATE USER 'alke_migrate'@'localhost' IDENTIFIED BY 'M1gr4t3_P@ss!';
+GRANT ALL PRIVILEGES ON alke_wallet.* TO 'alke_migrate'@'localhost';
+
+FLUSH PRIVILEGES;
+
+-- Verificar
+SHOW GRANTS FOR 'alke_app'@'localhost';
+SHOW GRANTS FOR 'alke_report'@'%';
+SHOW GRANTS FOR 'alke_migrate'@'localhost';
+```
+
+<Callout type="tip">
+En una variable de entorno `.env` del backend, usa siempre el usuario con **mínimos privilegios** (`alke_app`). El usuario `root` o el de migraciones jamás deben aparecer en el código de la aplicación.
+
+```
+DB_HOST=localhost
+DB_USER=alke_app
+DB_PASSWORD=App_S3cur3!
+DB_NAME=alke_wallet
+```
+</Callout>

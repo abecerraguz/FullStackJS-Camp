@@ -1,0 +1,341 @@
+---
+titulo: "Persistencia en Archivos con FS (Parte II)"
+descripcion: "Domina fs/promises con async/await y construye una aplicación CLI completa de gestión de usuarios con separación de responsabilidades."
+tipo: proyecto
+duracion: "3h"
+objetivos:
+  - "Usar fs/promises con async/await para todas las operaciones de archivos"
+  - "Implementar un gestor de usuarios con CRUD completo en JSON"
+  - "Construir una CLI con subcomandos: add, list, update, delete"
+  - "Separar responsabilidades: capa de datos vs capa de presentación"
+  - "Manejar errores adecuadamente en operaciones de I/O asíncronas"
+recursos:
+  - nombre: "Node.js — fs/promises API"
+    url: "https://nodejs.org/api/fs.html#promises-api"
+  - nombre: "Node.js — path module"
+    url: "https://nodejs.org/api/path.html"
+---
+
+# Persistencia en Archivos con FS (Parte II)
+
+En esta segunda parte construiremos una **aplicación CLI completa** de gestión de usuarios usando `fs/promises` con `async/await`.
+
+## Arquitectura del proyecto
+
+```
+gestor-usuarios/
+├── src/
+│   ├── app.js              ← Interfaz CLI (presentación)
+│   └── gestorUsuarios.js   ← Lógica de datos (modelo)
+├── data/
+│   └── usuarios.json       ← Almacenamiento persistente
+└── package.json
+```
+
+## Modelo de datos — gestorUsuarios.js
+
+```javascript
+// src/gestorUsuarios.js
+import { readFile, writeFile, mkdir } from "fs/promises";
+import { existsSync } from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DB_PATH = path.join(__dirname, "..", "data", "usuarios.json");
+const DB_DIR = path.dirname(DB_PATH);
+
+// ── Helpers de I/O ────────────────────────────────────────────
+async function leerUsuarios() {
+  try {
+    const raw = await readFile(DB_PATH, "utf-8");
+    return raw.trim() ? JSON.parse(raw) : [];
+  } catch (err) {
+    if (err.code === "ENOENT") return []; // Archivo no existe → array vacío
+    throw new Error(`Error al leer datos: ${err.message}`);
+  }
+}
+
+async function guardarUsuarios(usuarios) {
+  if (!existsSync(DB_DIR)) {
+    await mkdir(DB_DIR, { recursive: true });
+  }
+  await writeFile(DB_PATH, JSON.stringify(usuarios, null, 2), "utf-8");
+}
+
+// ── Operaciones CRUD ──────────────────────────────────────────
+
+export async function agregarUsuario(nombre, edad) {
+  if (!nombre || nombre.trim().length < 2) {
+    throw new Error("El nombre debe tener al menos 2 caracteres");
+  }
+
+  const edadNum = Number(edad);
+  if (isNaN(edadNum) || edadNum < 1 || edadNum > 120) {
+    throw new Error("La edad debe ser un número entre 1 y 120");
+  }
+
+  const usuarios = await leerUsuarios();
+
+  const nuevo = {
+    id: crypto.randomUUID(),
+    nombre: nombre.trim(),
+    edad: edadNum,
+    creadoEn: new Date().toISOString(),
+  };
+
+  usuarios.push(nuevo);
+  await guardarUsuarios(usuarios);
+  return nuevo;
+}
+
+export async function listarUsuarios() {
+  return leerUsuarios();
+}
+
+export async function buscarUsuario(id) {
+  const usuarios = await leerUsuarios();
+  const usuario = usuarios.find((u) => u.id === id);
+  if (!usuario) throw new Error(`No existe usuario con ID: ${id}`);
+  return usuario;
+}
+
+export async function actualizarUsuario(id, cambios) {
+  const usuarios = await leerUsuarios();
+  const idx = usuarios.findIndex((u) => u.id === id);
+  if (idx === -1) throw new Error(`No existe usuario con ID: ${id}`);
+
+  usuarios[idx] = {
+    ...usuarios[idx],
+    ...cambios,
+    id: usuarios[idx].id,           // El ID no se puede cambiar
+    creadoEn: usuarios[idx].creadoEn, // Ni la fecha de creación
+    actualizadoEn: new Date().toISOString(),
+  };
+
+  await guardarUsuarios(usuarios);
+  return usuarios[idx];
+}
+
+export async function eliminarUsuario(id) {
+  const usuarios = await leerUsuarios();
+  const idx = usuarios.findIndex((u) => u.id === id);
+  if (idx === -1) throw new Error(`No existe usuario con ID: ${id}`);
+
+  const [eliminado] = usuarios.splice(idx, 1);
+  await guardarUsuarios(usuarios);
+  return eliminado;
+}
+```
+
+## Interfaz CLI — app.js
+
+```javascript
+// src/app.js
+import chalk from "chalk";
+import {
+  agregarUsuario,
+  listarUsuarios,
+  buscarUsuario,
+  actualizarUsuario,
+  eliminarUsuario,
+} from "./gestorUsuarios.js";
+
+// Parsear argumentos
+const [comando, ...args] = process.argv.slice(2);
+
+function mostrarAyuda() {
+  console.log(chalk.bold("\nGestor de Usuarios CLI\n"));
+  console.log("Comandos disponibles:");
+  console.log(
+    `  ${chalk.cyan("add")} <nombre> <edad>     Agregar un usuario`
+  );
+  console.log(`  ${chalk.cyan("list")}                  Listar todos los usuarios`);
+  console.log(`  ${chalk.cyan("get")} <id>              Buscar usuario por ID`);
+  console.log(
+    `  ${chalk.cyan("update")} <id> <nombre> <edad>  Actualizar usuario`
+  );
+  console.log(`  ${chalk.cyan("delete")} <id>           Eliminar usuario\n`);
+  console.log("Ejemplos:");
+  console.log('  node src/app.js add "María García" 28');
+  console.log("  node src/app.js list");
+  console.log("  node src/app.js delete abc-123\n");
+}
+
+function mostrarUsuario(u) {
+  console.log(
+    `  ${chalk.gray(u.id.slice(0, 8))}  ` +
+    chalk.white.bold(u.nombre.padEnd(20)) +
+    `  ${chalk.yellow(String(u.edad).padStart(3))} años  ` +
+    chalk.gray(new Date(u.creadoEn).toLocaleDateString("es-CL"))
+  );
+}
+
+async function main() {
+  if (!comando || comando === "help") {
+    mostrarAyuda();
+    return;
+  }
+
+  try {
+    switch (comando) {
+      case "add": {
+        const [nombre, edad] = args;
+        if (!nombre || !edad) {
+          console.error(chalk.red('Uso: add "<nombre>" <edad>'));
+          process.exit(1);
+        }
+        const nuevo = await agregarUsuario(nombre, edad);
+        console.log(chalk.green("✓ Usuario agregado:"));
+        mostrarUsuario(nuevo);
+        break;
+      }
+
+      case "list": {
+        const usuarios = await listarUsuarios();
+        if (usuarios.length === 0) {
+          console.log(chalk.yellow("No hay usuarios registrados."));
+          break;
+        }
+        console.log(chalk.bold(`\n${usuarios.length} usuario(s):\n`));
+        usuarios.forEach(mostrarUsuario);
+        console.log();
+        break;
+      }
+
+      case "get": {
+        const [id] = args;
+        if (!id) {
+          console.error(chalk.red("Uso: get <id>"));
+          process.exit(1);
+        }
+        const usuario = await buscarUsuario(id);
+        console.log(chalk.bold("\nUsuario encontrado:"));
+        console.log(JSON.stringify(usuario, null, 2));
+        break;
+      }
+
+      case "update": {
+        const [id, nombre, edad] = args;
+        if (!id) {
+          console.error(chalk.red("Uso: update <id> [nombre] [edad]"));
+          process.exit(1);
+        }
+        const cambios = {};
+        if (nombre) cambios.nombre = nombre;
+        if (edad) cambios.edad = Number(edad);
+
+        const actualizado = await actualizarUsuario(id, cambios);
+        console.log(chalk.green("✓ Usuario actualizado:"));
+        mostrarUsuario(actualizado);
+        break;
+      }
+
+      case "delete": {
+        const [id] = args;
+        if (!id) {
+          console.error(chalk.red("Uso: delete <id>"));
+          process.exit(1);
+        }
+        const eliminado = await eliminarUsuario(id);
+        console.log(
+          chalk.green(`✓ Usuario "${eliminado.nombre}" eliminado correctamente`)
+        );
+        break;
+      }
+
+      default:
+        console.error(chalk.red(`Comando desconocido: ${comando}`));
+        mostrarAyuda();
+        process.exit(1);
+    }
+  } catch (err) {
+    console.error(chalk.red(`✗ Error: ${err.message}`));
+    process.exit(1);
+  }
+}
+
+main();
+```
+
+## Scripts en package.json
+
+```json
+{
+  "name": "gestor-usuarios",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "add": "node src/app.js add",
+    "list": "node src/app.js list",
+    "get": "node src/app.js get",
+    "update": "node src/app.js update",
+    "delete": "node src/app.js delete"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0"
+  }
+}
+```
+
+## Uso en terminal
+
+```bash
+# Agregar usuarios
+node src/app.js add "María García" 28
+node src/app.js add "Carlos López" 34
+node src/app.js add "Ana Pérez" 25
+
+# O con los scripts npm
+npm run add -- "Pedro Silva" 30
+
+# Listar todos
+node src/app.js list
+
+# Buscar por ID (copia un ID del listado)
+node src/app.js get 550e8400-e29b-41d4-a716-446655440000
+
+# Actualizar
+node src/app.js update 550e8400-e29b-41d4-a716-446655440000 "María López" 29
+
+# Eliminar
+node src/app.js delete 550e8400-e29b-41d4-a716-446655440000
+```
+
+<Callout type="tip">
+Este patrón de separar la **capa de datos** (`gestorUsuarios.js`) de la **capa de presentación** (`app.js`) es el fundamento del patrón MVC que veremos en el Módulo VII con Express + PostgreSQL.
+</Callout>
+
+## Reutilizar gestorUsuarios en Express
+
+La capa de datos que construiste puede reutilizarse directamente en un servidor Express:
+
+```javascript
+// server.js — La misma lógica, diferente interfaz
+import express from "express";
+import {
+  listarUsuarios,
+  agregarUsuario,
+  eliminarUsuario,
+} from "./src/gestorUsuarios.js";
+
+const app = express();
+app.use(express.json());
+
+app.get("/usuarios", async (req, res) => {
+  const usuarios = await listarUsuarios();
+  res.json({ ok: true, datos: usuarios });
+});
+
+app.post("/usuarios", async (req, res) => {
+  try {
+    const { nombre, edad } = req.body;
+    const nuevo = await agregarUsuario(nombre, edad);
+    res.status(201).json({ ok: true, datos: nuevo });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
+});
+
+app.listen(3000);
+```

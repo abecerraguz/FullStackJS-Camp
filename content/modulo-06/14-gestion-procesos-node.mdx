@@ -1,0 +1,289 @@
+---
+titulo: "Gestión de Procesos en Node.js"
+descripcion: "Aprende a controlar el ciclo de vida de procesos Node.js: argumentos de entrada, señales del sistema, foreground/background y gestión con PM2."
+tipo: practica
+duracion: "4h"
+objetivos:
+  - "Validar argumentos de entrada con process.argv"
+  - "Capturar señales del sistema operativo (SIGINT, SIGTERM)"
+  - "Gestionar procesos en foreground y background con el shell"
+  - "Usar process.exit() para terminar procesos correctamente"
+  - "Aplicar los comandos básicos de PM2 en un flujo de trabajo real"
+recursos:
+  - nombre: "Node.js — Process object"
+    url: "https://nodejs.org/api/process.html"
+  - nombre: "PM2 — Documentación"
+    url: "https://pm2.keymetrics.io/"
+  - nombre: "Linux Process Management"
+    url: "https://linuxjourney.com/lesson/process-details"
+---
+
+# Gestión de Procesos en Node.js
+
+## El objeto `process`
+
+`process` es un objeto global de Node.js que representa el proceso actual en ejecución. No necesitas importarlo:
+
+```javascript
+// Información del proceso
+console.log("PID:", process.pid);                    // ID del proceso
+console.log("Node version:", process.version);       // v20.11.0
+console.log("Platform:", process.platform);          // linux, darwin, win32
+console.log("Arquitectura:", process.arch);          // x64, arm64
+console.log("Directorio:", process.cwd());           // Directorio de trabajo
+console.log("Tiempo activo:", process.uptime(), "s");
+console.log("Memoria:", process.memoryUsage());
+
+// Variables de entorno
+console.log("NODE_ENV:", process.env.NODE_ENV);
+console.log("PORT:", process.env.PORT);
+```
+
+## Procesos de larga duración
+
+A diferencia de un script que termina, una app Node.js permanece activa gracias a listeners de eventos:
+
+```javascript
+// proceso-vivo.js
+import { setInterval } from "timers";
+
+console.log(`[PID ${process.pid}] Proceso iniciado`);
+
+let contador = 0;
+
+// Este setInterval mantiene vivo el proceso
+const intervalo = setInterval(() => {
+  contador++;
+  const memoria = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
+  console.log(`[${new Date().toISOString()}] tick #${contador} | RAM: ${memoria} MB`);
+}, 2000);
+
+// Limpiar al terminar
+process.on("exit", (code) => {
+  clearInterval(intervalo);
+  console.log(`\nProceso terminado con código: ${code}`);
+});
+```
+
+## Validación de argumentos
+
+```javascript
+// app-argv.js — Script con validación de parámetros
+const args = process.argv.slice(2);
+
+function validarArgumentos() {
+  if (args.length === 0) {
+    console.error("Error: debes proporcionar al menos un argumento");
+    console.error("Uso: node app-argv.js <nombre> [opciones]");
+    console.error("Ejemplo: node app-argv.js Juan --edad=30 --activo");
+    process.exit(1); // Terminar con código de error
+  }
+
+  const nombre = args[0];
+  if (nombre.length < 2) {
+    console.error("Error: el nombre debe tener al menos 2 caracteres");
+    process.exit(1);
+  }
+
+  return nombre;
+}
+
+// Parsear flags opcionales
+function parsearFlags() {
+  const flags = {};
+  for (const arg of args.slice(1)) {
+    if (arg.startsWith("--")) {
+      const [clave, valor] = arg.slice(2).split("=");
+      flags[clave] = valor ?? true;
+    }
+  }
+  return flags;
+}
+
+const nombre = validarArgumentos();
+const flags = parsearFlags();
+
+console.log(`Hola, ${nombre}!`);
+if (flags.edad) console.log(`Edad: ${flags.edad}`);
+if (flags.activo) console.log("Estado: activo");
+```
+
+```bash
+node app-argv.js               # Error: debes proporcionar...
+node app-argv.js Ana           # Hola, Ana!
+node app-argv.js Juan --edad=25 --activo  # Con flags
+```
+
+## Capturar señales del sistema
+
+Las señales permiten comunicarse con el proceso desde el sistema operativo o desde otro proceso:
+
+```javascript
+// servidor-con-señales.js
+import express from "express";
+
+const app = express();
+let servidor;
+
+app.get("/health", (req, res) => {
+  res.json({ ok: true, pid: process.pid });
+});
+
+servidor = app.listen(3000, () => {
+  console.log(`[PID ${process.pid}] Servidor iniciado en puerto 3000`);
+});
+
+// ── Captura de señales ────────────────────────────────────────
+
+// SIGINT: Ctrl+C en la terminal
+process.on("SIGINT", () => {
+  console.log("\n[SIGINT] Ctrl+C recibido. Cerrando servidor...");
+  cerrarGraciosamente(0);
+});
+
+// SIGTERM: kill <pid> — señal de terminación estándar
+process.on("SIGTERM", () => {
+  console.log("\n[SIGTERM] Señal de terminación recibida. Cerrando...");
+  cerrarGraciosamente(0);
+});
+
+// Errores no capturados (última línea de defensa)
+process.on("uncaughtException", (err) => {
+  console.error("[ERROR] Excepción no capturada:", err.message);
+  cerrarGraciosamente(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[ERROR] Promise rechazada sin manejar:", reason);
+  cerrarGraciosamente(1);
+});
+
+function cerrarGraciosamente(codigoSalida) {
+  servidor.close(() => {
+    console.log("Servidor HTTP cerrado correctamente");
+    process.exit(codigoSalida);
+  });
+
+  // Si el servidor no cierra en 5 segundos, forzar salida
+  setTimeout(() => {
+    console.error("Forzando salida después de timeout");
+    process.exit(1);
+  }, 5000).unref();
+}
+```
+
+<Callout type="tip">
+El cierre gracioso (graceful shutdown) espera a que las requests en curso terminen antes de cerrar el servidor. Es fundamental en producción para no cortar peticiones a mitad de camino.
+</Callout>
+
+## Foreground y Background en el shell
+
+```bash
+# Ejecutar en foreground (ocupa la terminal)
+node servidor.js
+
+# Ejecutar en background (libera la terminal)
+node servidor.js &
+
+# Ver procesos en background
+jobs
+
+# Traer al foreground
+fg %1
+
+# Matar un proceso por PID
+kill <PID>
+kill -9 <PID>   # Forzar (SIGKILL, no capurable)
+
+# Ver todos los procesos Node.js
+ps aux | grep node
+
+# Ver quién usa el puerto 3000
+lsof -i :3000
+```
+
+## Flujo completo con PM2
+
+```bash
+# 1. Instalar PM2 globalmente
+npm install -g pm2
+
+# 2. Iniciar la aplicación
+pm2 start servidor.js --name "mi-app"
+
+# 3. Ver estado
+pm2 list
+
+# 4. Ver logs en tiempo real
+pm2 logs mi-app
+
+# 5. Monitoreo (CPU + RAM + logs)
+pm2 monit
+
+# 6. Reiniciar (por ejemplo, tras desplegar cambios)
+pm2 restart mi-app
+
+# 7. Recarga sin downtime (para producción)
+pm2 reload mi-app
+
+# 8. Ver detalles de un proceso
+pm2 show mi-app
+
+# 9. Detener
+pm2 stop mi-app
+
+# 10. Guardar la lista de procesos para que PM2 los restaure al reiniciar
+pm2 save
+pm2 startup   # Configurar arranque automático
+```
+
+## Variables de entorno con PM2
+
+```bash
+# Pasar variables de entorno al iniciar
+PORT=8080 NODE_ENV=production pm2 start servidor.js --name "api-prod"
+
+# O usando el archivo ecosystem.config.js
+pm2 start ecosystem.config.js --env production
+```
+
+## Ejercicio práctico
+
+```javascript
+// monitor.js — Proceso que reporta su estado cada 5 segundos
+// Captura Ctrl+C para terminar limpiamente
+// Muestra: tiempo activo, memoria, contador de ciclos
+
+let ciclos = 0;
+
+const intervalo = setInterval(() => {
+  ciclos++;
+  const uptime = process.uptime().toFixed(1);
+  const memMB = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
+
+  process.stdout.write(
+    `\r[PID ${process.pid}] Ciclo: ${ciclos} | Uptime: ${uptime}s | RAM: ${memMB} MB  `
+  );
+}, 5000);
+
+console.log(`Monitor iniciado (PID: ${process.pid}). Ctrl+C para detener.\n`);
+
+process.on("SIGINT", () => {
+  clearInterval(intervalo);
+  console.log(`\n\nMonitor detenido después de ${ciclos} ciclos.`);
+  process.exit(0);
+});
+```
+
+```bash
+# Ejecutar y observar
+node monitor.js
+
+# En otra terminal, enviar señal
+kill -SIGINT <PID>
+
+# O usar PM2
+pm2 start monitor.js --name monitor
+pm2 logs monitor
+pm2 stop monitor
+```

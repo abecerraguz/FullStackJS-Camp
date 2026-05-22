@@ -1,0 +1,269 @@
+---
+titulo: "Escalabilidad con PM2 y Load Balancing"
+descripcion: "Aprende a escalar aplicaciones Node.js en producción usando PM2 en modo cluster y NGINX como reverse proxy y balanceador de carga."
+tipo: teoria
+duracion: "3h"
+objetivos:
+  - "Entender el problema de rendimiento de un proceso único en Node.js"
+  - "Instalar y usar PM2 para gestionar procesos Node.js"
+  - "Configurar PM2 en modo cluster para aprovechar múltiples núcleos de CPU"
+  - "Configurar NGINX como reverse proxy y balanceador de carga"
+  - "Monitorear el estado de los procesos con PM2"
+recursos:
+  - nombre: "PM2 — Documentación oficial"
+    url: "https://pm2.keymetrics.io/docs/usage/quick-start/"
+  - nombre: "PM2 — Cluster Mode"
+    url: "https://pm2.keymetrics.io/docs/usage/cluster-mode/"
+  - nombre: "NGINX — Reverse Proxy Guide"
+    url: "https://docs.nginx.com/nginx/admin-guide/web-server/reverse-proxy/"
+---
+
+# Escalabilidad con PM2 y Load Balancing
+
+## El problema del proceso único
+
+Node.js es **single-threaded**: por defecto, tu aplicación corre en un solo proceso y un solo hilo. Si el servidor tiene 8 núcleos de CPU, **7 quedan sin usar**.
+
+```
+Servidor con 8 núcleos:
+
+Sin clustering:              Con clustering (PM2):
+┌────────────────┐           ┌────┬────┬────┬────┐
+│  Núcleo 1  ✅ │           │ P1 │ P2 │ P3 │ P4 │ (todos activos)
+│  Núcleo 2  ❌ │           ├────┼────┼────┼────┤
+│  Núcleo 3  ❌ │           │ P5 │ P6 │ P7 │ P8 │
+│  ...           │           └────┴────┴────┴────┘
+└────────────────┘           8 procesos × 1 CPU cada uno
+```
+
+Además, si tu proceso cae (error no capturado), el servidor queda caído hasta que alguien lo reinicia manualmente.
+
+## PM2 — Process Manager for Node.js
+
+PM2 es el gestor de procesos más popular para aplicaciones Node.js en producción:
+
+```bash
+# Instalación global
+npm install -g pm2
+
+# Verificar instalación
+pm2 --version
+```
+
+## Comandos básicos de PM2
+
+```bash
+# Iniciar una aplicación
+pm2 start server.js
+
+# Iniciar con nombre descriptivo
+pm2 start server.js --name "mi-api"
+
+# Iniciar en modo watch (reinicia si hay cambios)
+pm2 start server.js --watch
+
+# Ver procesos activos
+pm2 list
+pm2 status
+
+# Ver logs en tiempo real
+pm2 logs
+pm2 logs mi-api      # Solo de un proceso
+
+# Detener
+pm2 stop mi-api
+pm2 stop all
+
+# Reiniciar
+pm2 restart mi-api
+
+# Recargar sin downtime (zero-downtime reload)
+pm2 reload mi-api
+
+# Eliminar del registro de PM2
+pm2 delete mi-api
+
+# Monitoreo en tiempo real (CPU, RAM, logs)
+pm2 monit
+```
+
+## Modo Cluster — múltiples núcleos
+
+```bash
+# Iniciar en cluster mode (detecta cantidad de núcleos automáticamente)
+pm2 start server.js --name "api" -i max
+
+# Especificar número de instancias
+pm2 start server.js --name "api" -i 4
+
+# Recargar sin downtime (actualiza instancias una a una)
+pm2 reload api
+```
+
+Ejemplo del servidor con información del proceso:
+
+```javascript
+// server.js
+import express from "express";
+
+const app = express();
+const PORT = process.env.PORT ?? 3000;
+
+app.get("/health", (req, res) => {
+  res.json({
+    ok: true,
+    pid: process.pid,
+    uptime: process.uptime(),
+    memory: process.memoryUsage().heapUsed,
+  });
+});
+
+app.get("/info", (req, res) => {
+  res.json({
+    pid: process.pid,
+    mensaje: `Atendido por el proceso ${process.pid}`,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.listen(PORT, () => {
+  console.log(`[PID ${process.pid}] Servidor en puerto ${PORT}`);
+});
+```
+
+Al hacer múltiples requests a `/info`, verás que diferentes PIDs responden: el balanceador de carga de PM2 distribuye el trabajo.
+
+## Archivo de configuración ecosystem.config.js
+
+Para configuraciones más complejas, usa un archivo de configuración:
+
+```javascript
+// ecosystem.config.js
+export default {
+  apps: [
+    {
+      name: "mi-api",
+      script: "./server.js",
+
+      // Cluster mode
+      instances: "max",       // O un número fijo: 4
+      exec_mode: "cluster",
+
+      // Variables de entorno
+      env: {
+        NODE_ENV: "development",
+        PORT: 3000,
+      },
+      env_production: {
+        NODE_ENV: "production",
+        PORT: 8080,
+      },
+
+      // Opciones de reinicio
+      watch: false,
+      max_memory_restart: "500M", // Reinicia si supera 500MB de RAM
+
+      // Logs
+      log_date_format: "YYYY-MM-DD HH:mm:ss",
+      error_file: "./logs/error.log",
+      out_file: "./logs/out.log",
+      merge_logs: true,
+    },
+  ],
+};
+```
+
+```bash
+# Usar el archivo de configuración
+pm2 start ecosystem.config.js
+pm2 start ecosystem.config.js --env production
+pm2 reload ecosystem.config.js
+```
+
+## PM2 al iniciar el sistema
+
+```bash
+# Generar script de arranque automático
+pm2 startup
+
+# El comando anterior te da un comando para ejecutar (cópialo y ejecútalo)
+# Ejemplo: sudo env PATH=... pm2 startup systemd -u usuario --hp /home/usuario
+
+# Guardar el estado actual de PM2
+pm2 save
+
+# Ahora PM2 y tus apps se inician automáticamente al reiniciar el servidor
+```
+
+## NGINX como reverse proxy
+
+NGINX se coloca delante de Node.js para:
+- Terminar SSL/TLS (HTTPS)
+- Balancear carga entre múltiples instancias
+- Servir archivos estáticos directamente (más eficiente)
+- Rate limiting y protección básica
+
+```nginx
+# /etc/nginx/sites-available/mi-api
+
+upstream nodejs_cluster {
+    # PM2 gestiona los workers en el mismo puerto
+    server 127.0.0.1:3000;
+
+    # Si tienes múltiples servidores físicos:
+    # server 192.168.1.10:3000;
+    # server 192.168.1.11:3000;
+    # server 192.168.1.12:3000;
+}
+
+server {
+    listen 80;
+    server_name api.midominio.com;
+
+    # Logs
+    access_log /var/log/nginx/mi-api.access.log;
+    error_log  /var/log/nginx/mi-api.error.log;
+
+    # Archivos estáticos — NGINX los sirve directamente
+    location /public/ {
+        root /var/www/mi-api;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Todo lo demás va a Node.js
+    location / {
+        proxy_pass http://nodejs_cluster;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+## Arquitectura final en producción
+
+```
+Internet
+   │
+   ▼
+┌──────────┐
+│  NGINX   │ ← SSL, archivos estáticos, rate limiting
+└────┬─────┘
+     │ proxy_pass http://localhost:3000
+     ▼
+┌──────────────────────────────┐
+│          PM2 Cluster          │
+│  ┌───┐ ┌───┐ ┌───┐ ┌───┐   │
+│  │ W1│ │ W2│ │ W3│ │ W4│   │ ← Procesos Node.js
+│  └───┘ └───┘ └───┘ └───┘   │   (uno por CPU)
+└──────────────────────────────┘
+```
+
+<Callout type="info">
+En entornos cloud (AWS, GCP, Azure), generalmente usas el balanceador de carga del proveedor en lugar de NGINX. Pero PM2 en modo cluster sigue siendo útil para aprovechar todos los núcleos de cada instancia de servidor.
+</Callout>

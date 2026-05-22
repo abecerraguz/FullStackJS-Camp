@@ -1,0 +1,284 @@
+---
+titulo: "POO en JavaScript (Parte II)"
+descripcion: "Patrones avanzados de clases: mixins, composición, getters/setters, iteradores y aplicación práctica en un sistema real."
+tipo: "practica"
+modulo: 4
+duracion: "6h"
+objetivos:
+  - "Usar getters y setters con validación."
+  - "Diseñar jerarquías de clases realistas."
+  - "Preferir composición sobre herencia cuando corresponde."
+  - "Implementar el patrón toString() para debugging."
+  - "Aplicar POO en un mini sistema de gestión."
+conceptosClave:
+  - "Getter / Setter"
+  - "toString"
+  - "Composición"
+  - "Mixin"
+  - "Patrón Repository"
+recursos:
+  - { nombre: "MDN — get / set", url: "https://developer.mozilla.org/es/docs/Web/JavaScript/Reference/Functions/get" }
+  - { nombre: "JavaScript.info — Herencia de clases", url: "https://es.javascript.info/class-inheritance" }
+---
+
+# POO en JavaScript (Parte II)
+
+En esta segunda parte profundizamos en **patrones de diseño con clases** y desarrollamos un mini sistema completo que integra los cuatro pilares.
+
+## Getters y Setters con validación
+
+Los **getters** y **setters** permiten ejecutar lógica al leer o escribir una propiedad:
+
+```javascript
+class Temperatura {
+  #celsius;
+
+  constructor(celsius) {
+    this.celsius = celsius; // usa el setter
+  }
+
+  set celsius(valor) {
+    if (typeof valor !== "number") throw new TypeError("Debe ser un número");
+    if (valor < -273.15) throw new RangeError("Por debajo del cero absoluto");
+    this.#celsius = valor;
+  }
+
+  get celsius() { return this.#celsius; }
+
+  get fahrenheit() {
+    return (this.#celsius * 9) / 5 + 32;
+  }
+
+  get kelvin() {
+    return this.#celsius + 273.15;
+  }
+
+  toString() {
+    return `${this.#celsius}°C | ${this.fahrenheit}°F | ${this.kelvin}K`;
+  }
+}
+
+const t = new Temperatura(100);
+console.log(t.toString());   // "100°C | 212°F | 373.15K"
+
+t.celsius = -40;
+console.log(t.fahrenheit);   // -40  (punto de cruce C/F)
+
+// t.celsius = -300; → RangeError: Por debajo del cero absoluto
+```
+
+---
+
+## Patrón toString / valueOf
+
+Sobreescribir `toString()` hace que los objetos sean **autodescritos** en logs y concatenaciones:
+
+```javascript
+class Dinero {
+  #monto;
+  #moneda;
+
+  constructor(monto, moneda = "CLP") {
+    this.#monto   = monto;
+    this.#moneda  = moneda;
+  }
+
+  sumar(otro) {
+    if (this.#moneda !== otro.#moneda) throw new Error("Monedas distintas");
+    return new Dinero(this.#monto + otro.#monto, this.#moneda);
+  }
+
+  valueOf() { return this.#monto; }  // permite comparar: dineroA > dineroB
+
+  toString() {
+    return new Intl.NumberFormat("es-CL", {
+      style: "currency",
+      currency: this.#moneda,
+      maximumFractionDigits: 0,
+    }).format(this.#monto);
+  }
+}
+
+const precio    = new Dinero(25000);
+const descuento = new Dinero(3000);
+const final     = precio.sumar(descuento);
+
+console.log(`Total: ${final}`);  // "Total: $28.000"
+console.log(precio > descuento); // true  (gracias a valueOf)
+```
+
+---
+
+## Composición sobre herencia
+
+> **"Prefiere composición sobre herencia"** — principio clave de diseño.
+
+La **composición** une objetos con roles específicos en lugar de crear jerarquías largas:
+
+```javascript
+// Roles independientes y reutilizables
+const Serializable = (Base) => class extends Base {
+  toJSON() {
+    return JSON.stringify(this, null, 2);
+  }
+  static fromJSON(json) {
+    return Object.assign(new this(), JSON.parse(json));
+  }
+};
+
+const Validable = (Base) => class extends Base {
+  validar() {
+    for (const [campo, valor] of Object.entries(this)) {
+      if (valor === null || valor === undefined || valor === "") {
+        return { valido: false, campo };
+      }
+    }
+    return { valido: true };
+  }
+};
+
+// Combinar roles con composición (mixin)
+class Persona {
+  constructor(nombre, rut) {
+    this.nombre = nombre;
+    this.rut    = rut;
+  }
+}
+
+class Empleado extends Validable(Serializable(Persona)) {
+  constructor(nombre, rut, cargo) {
+    super(nombre, rut);
+    this.cargo = cargo;
+  }
+}
+
+const emp = new Empleado("Ana García", "12.345.678-9", "Desarrolladora");
+console.log(emp.validar());  // { valido: true }
+console.log(emp.toJSON());
+// {
+//   "nombre": "Ana García",
+//   "rut": "12.345.678-9",
+//   "cargo": "Desarrolladora"
+// }
+```
+
+---
+
+## Mini sistema: Gestor de Inventario
+
+Un sistema real que integra todos los conceptos:
+
+```javascript
+class Producto {
+  static #contador = 0;
+
+  #id;
+  #precio;
+  #stock;
+
+  constructor(nombre, precio, stock = 0) {
+    this.#id     = ++Producto.#contador;
+    this.nombre  = nombre;
+    this.#precio = precio;
+    this.#stock  = stock;
+  }
+
+  get id()     { return this.#id; }
+  get precio() { return this.#precio; }
+  get stock()  { return this.#stock; }
+
+  set precio(valor) {
+    if (valor < 0) throw new RangeError("Precio no puede ser negativo");
+    this.#precio = valor;
+  }
+
+  agregarStock(cantidad) {
+    if (cantidad <= 0) throw new RangeError("Cantidad debe ser positiva");
+    this.#stock += cantidad;
+    return this;   // permite encadenamiento
+  }
+
+  vender(cantidad) {
+    if (cantidad > this.#stock) throw new Error(`Stock insuficiente (${this.#stock} disponibles)`);
+    this.#stock -= cantidad;
+    return this;
+  }
+
+  toString() {
+    return `[${this.#id}] ${this.nombre} | $${this.#precio.toLocaleString("es-CL")} | Stock: ${this.#stock}`;
+  }
+}
+
+class Inventario {
+  #productos = new Map();
+
+  agregar(producto) {
+    this.#productos.set(producto.id, producto);
+    return this;
+  }
+
+  buscarPorNombre(texto) {
+    return [...this.#productos.values()].filter(p =>
+      p.nombre.toLowerCase().includes(texto.toLowerCase())
+    );
+  }
+
+  get total() {
+    return [...this.#productos.values()].reduce(
+      (suma, p) => suma + p.precio * p.stock, 0
+    );
+  }
+
+  listar() {
+    this.#productos.forEach(p => console.log(p.toString()));
+  }
+}
+
+// Uso
+const inv = new Inventario();
+
+inv
+  .agregar(new Producto("Laptop Dell", 800000, 5))
+  .agregar(new Producto("Monitor 27''", 350000, 10))
+  .agregar(new Producto("Teclado mecánico", 85000, 20));
+
+inv.listar();
+// [1] Laptop Dell | $800.000 | Stock: 5
+// [2] Monitor 27'' | $350.000 | Stock: 10
+// [3] Teclado mecánico | $85.000 | Stock: 20
+
+console.log(`Valor total inventario: $${inv.total.toLocaleString("es-CL")}`);
+
+// Buscar y vender
+const laptops = inv.buscarPorNombre("laptop");
+laptops[0].vender(2).agregarStock(3);
+console.log(laptops[0].toString());
+// [1] Laptop Dell | $800.000 | Stock: 6
+```
+
+<Callout type="tip">
+El patrón de retornar `this` en métodos mutadores (`.vender(2).agregarStock(3)`) se llama **method chaining** y produce código muy legible. Lo verás mucho en librerías como jQuery, Lodash y builders de consultas SQL.
+</Callout>
+
+---
+
+## Práctica
+
+<CodeEditor initialCode={`// Diseña una clase Biblioteca que:
+// - Almacene libros con título, autor y disponible (true/false)
+// - Método prestar(titulo) → cambia disponible a false (o error si ya prestado)
+// - Método devolver(titulo) → cambia disponible a true
+// - Getter librosDisponibles → array de libros con disponible: true
+
+class Biblioteca {
+  // Tu código aquí
+}
+
+const bib = new Biblioteca();
+bib.agregar("El Quijote", "Cervantes");
+bib.agregar("1984", "Orwell");
+bib.prestar("1984");
+
+console.log(bib.librosDisponibles.map(l => l.titulo));
+// ["El Quijote"]
+`} expected='["El Quijote"]' />

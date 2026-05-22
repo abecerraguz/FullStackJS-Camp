@@ -1,0 +1,102 @@
+---
+titulo: "Objetos Nativos de JavaScript"
+descripcion: "Math, String, Date y JSON: los objetos nativos más usados en el desarrollo JavaScript del día a día."
+tipo: "practica"
+modulo: 3
+duracion: "4h"
+objetivos:
+  - "Usar métodos de Math para operaciones matemáticas."
+  - "Manipular strings con los métodos más comunes."
+  - "Crear y formatear fechas con el objeto Date."
+  - "Serializar y deserializar datos con JSON."
+conceptosClave:
+  - "Math"
+  - "String methods"
+  - "Date"
+  - "JSON.stringify / JSON.parse"
+recursos:
+  - { nombre: "MDN — Math", url: "https://developer.mozilla.org/es/docs/Web/JavaScript/Reference/Global_Objects/Math" }
+  - { nombre: "MDN — String", url: "https://developer.mozilla.org/es/docs/Web/JavaScript/Reference/Global_Objects/String" }
+---
+
+# Objetos Nativos de JavaScript
+
+JavaScript incluye objetos nativos con métodos muy útiles para matemáticas, textos, fechas y serialización de datos.
+
+## Math
+
+```javascript
+Math.round(4.6)   // 5   — redondea al entero más cercano
+Math.floor(4.9)   // 4   — redondea hacia abajo
+Math.ceil(4.1)    // 5   — redondea hacia arriba
+Math.abs(-15)     // 15  — valor absoluto
+Math.max(3, 7, 1) // 7   — máximo
+Math.min(3, 7, 1) // 1   — mínimo
+Math.sqrt(16)     // 4   — raíz cuadrada
+Math.pow(2, 10)   // 1024 — potencia
+Math.PI           // 3.14159...
+
+// Número aleatorio entre min y max (inclusive)
+function aleatorio(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+console.log(aleatorio(1, 6)); // dado de 6 caras
+```
+
+## String
+
+```javascript
+const texto = "  Hola, Mundo!  ";
+
+texto.trim()              // "Hola, Mundo!" — elimina espacios
+texto.toLowerCase()        // "  hola, mundo!  "
+texto.toUpperCase()        // "  HOLA, MUNDO!  "
+texto.includes("Mundo")    // true
+texto.startsWith("  Hola") // true
+texto.replace("Mundo", "JavaScript") // "  Hola, JavaScript!  "
+texto.split(", ")          // ["  Hola", "Mundo!  "]
+"hola".repeat(3)           // "holaholahola"
+"ABC".padStart(5, "0")     // "00ABC"
+"ABC".padEnd(5, "-")       // "ABC--"
+
+// Template literals (más potentes que concatenación)
+const nombre = "Ana";
+const edad   = 25;
+console.log(`${nombre} tiene ${edad} años. Nació en ${2025 - edad}.`);
+```
+
+## Date
+
+```javascript
+const ahora = new Date();
+console.log(ahora.getFullYear()); // 2025
+console.log(ahora.getMonth());    // 0-11 (0 = enero)
+console.log(ahora.getDate());     // día del mes
+console.log(ahora.getDay());      // 0-6 (0 = domingo)
+
+// Formatear fechas con Intl
+const fechaFormateada = new Intl.DateTimeFormat("es-CL", {
+  dateStyle: "full",
+}).format(ahora);
+console.log(fechaFormateada); // "miércoles, 20 de mayo de 2026"
+```
+
+## JSON
+
+```javascript
+// JSON.stringify — convierte objeto a string (para almacenar o enviar)
+const usuario = { nombre: "Ana", edad: 25, activo: true };
+const json = JSON.stringify(usuario);
+console.log(json); // '{"nombre":"Ana","edad":25,"activo":true}'
+
+// Con formato legible
+console.log(JSON.stringify(usuario, null, 2));
+
+// JSON.parse — convierte string a objeto (para usar datos recibidos)
+const recuperado = JSON.parse(json);
+console.log(recuperado.nombre); // "Ana"
+
+// Uso práctico: localStorage
+localStorage.setItem("usuario", JSON.stringify(usuario));
+const guardado = JSON.parse(localStorage.getItem("usuario"));
+```

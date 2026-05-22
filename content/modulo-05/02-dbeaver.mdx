@@ -1,0 +1,195 @@
+---
+titulo: "Uso de DBeaver"
+descripcion: "Instalación, conexión a MySQL/PostgreSQL, exploración del esquema y ejecución de consultas con DBeaver Community."
+tipo: "practica"
+modulo: 5
+duracion: "4h"
+objetivos:
+  - "Instalar DBeaver Community Edition."
+  - "Crear una conexión a MySQL o PostgreSQL."
+  - "Navegar el esquema: bases de datos, tablas y columnas."
+  - "Ejecutar scripts SQL y exportar resultados."
+  - "Usar el editor SQL con autocompletado y formato."
+conceptosClave:
+  - "Cliente de base de datos"
+  - "Connection string"
+  - "Esquema"
+  - "Editor SQL"
+  - "Data Grid"
+recursos:
+  - { nombre: "DBeaver Community — Descarga", url: "https://dbeaver.io/download/" }
+  - { nombre: "DBeaver Docs", url: "https://dbeaver.com/docs/dbeaver/" }
+---
+
+# Uso de DBeaver
+
+**DBeaver Community** es un cliente de base de datos gratuito y de código abierto que soporta más de 80 motores distintos. Es la herramienta estándar del curso para interactuar con MySQL y PostgreSQL.
+
+---
+
+## Instalación
+
+1. Descarga desde [dbeaver.io/download](https://dbeaver.io/download/) la versión **Community** (gratuita)
+2. Elige el instalador para tu sistema operativo (macOS `.dmg`, Windows `.exe`, Linux `.deb`/`.rpm`)
+3. Sigue el asistente de instalación (opciones por defecto son correctas)
+4. En el primer lanzamiento, acepta instalar los drivers de base de datos cuando lo solicite
+
+<Callout type="info">
+DBeaver incluye los drivers JDBC de forma automática. No necesitas instalar nada adicional para conectarte a MySQL o PostgreSQL.
+</Callout>
+
+---
+
+## Conectar a MySQL local
+
+### Paso 1 — Nueva conexión
+
+1. Menú **Database → New Database Connection** (o `Ctrl/Cmd + N`)
+2. Selecciona **MySQL** en la lista → **Next**
+
+### Paso 2 — Parámetros de conexión
+
+| Campo | Valor típico para desarrollo local |
+|-------|------------------------------------|
+| Server Host | `localhost` |
+| Port | `3306` (MySQL) / `5432` (PostgreSQL) |
+| Database | `alke_wallet` (o vacío para ver todas) |
+| Username | `root` (MySQL local) |
+| Password | La que configuraste al instalar |
+
+### Paso 3 — Test Connection
+
+Haz clic en **Test Connection** antes de guardar:
+- ✅ Verde: conexión exitosa
+- ❌ Rojo: verifica que el servicio MySQL esté corriendo
+
+```
+Errores comunes:
+- "Communications link failure" → MySQL no está corriendo (inicia XAMPP/MAMP/servicio)
+- "Access denied for user 'root'" → contraseña incorrecta
+- "Unknown database 'alke_wallet'" → ejecuta primero el script 00_setup_bd.sql
+```
+
+---
+
+## Conectar a PostgreSQL local
+
+Mismos pasos, seleccionando **PostgreSQL** como driver:
+
+| Campo | Valor |
+|-------|-------|
+| Server Host | `localhost` |
+| Port | `5432` |
+| Database | `postgres` (por defecto) |
+| Username | `postgres` |
+| Password | La configurada al instalar |
+
+---
+
+## Interfaz principal
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Menú y barra de herramientas                               │
+├─────────────────┬───────────────────────────────────────────┤
+│                 │  Editor SQL / Data Grid                    │
+│  Database       │                                            │
+│  Navigator      │  SELECT * FROM usuarios;                   │
+│  (árbol de      │                                            │
+│  objetos)       │  ┌──────┬────────┬────────────┬─────────┐  │
+│                 │  │ id   │ nombre │ correo     │ saldo   │  │
+│  > alke_wallet  │  ├──────┼────────┼────────────┼─────────┤  │
+│    > Tables     │  │ 1    │ Juan   │ juan@...   │ 50000   │  │
+│      usuarios   │  │ 2    │ Ana    │ ana@...    │ 120000  │  │
+│      monedas    │  └──────┴────────┴────────────┴─────────┘  │
+│      transacc.. │                                            │
+└─────────────────┴───────────────────────────────────────────┘
+```
+
+---
+
+## Flujo de trabajo con el editor SQL
+
+### Abrir el editor
+
+- Clic derecho sobre la base de datos → **SQL Editor → Open SQL Script**
+- O `Ctrl/Cmd + ]` (nuevo script rápido)
+
+### Ejecutar consultas
+
+| Acción | Atajo |
+|--------|-------|
+| Ejecutar consulta completa | `Ctrl/Cmd + Enter` |
+| Ejecutar solo la selección | Selecciona el texto → `Ctrl/Cmd + Enter` |
+| Ejecutar script completo | `Alt + X` |
+| Formatear SQL | `Ctrl/Cmd + Shift + F` |
+| Autocompletar | `Ctrl + Space` |
+
+### Resultado en Data Grid
+
+Después de ejecutar un SELECT, el resultado aparece en la **Data Grid**:
+- Puedes ordenar haciendo clic en el encabezado de columna
+- Puedes filtrar con el ícono del embudo
+- Exportar a CSV/Excel con clic derecho → **Export Data**
+
+---
+
+## Explorar el esquema
+
+### Ver estructura de una tabla
+
+Clic derecho sobre la tabla → **View Table** (o doble clic):
+- Pestaña **Columns**: nombre, tipo, restricciones
+- Pestaña **Constraints**: PK, FK, UNIQUE
+- Pestaña **Data**: vista previa de los datos
+- Pestaña **ER Diagram**: diagrama de relaciones de esa tabla
+
+### Diagrama ER automático
+
+Clic derecho sobre la base de datos → **View Diagram**:
+- DBeaver genera automáticamente el diagrama con todas las relaciones (FK)
+- Útil para entender la estructura antes de escribir JOINs
+
+---
+
+## Ejecutar el script de Alke Wallet
+
+1. Descarga o copia el script `00_setup_bd.sql` del material de clase
+2. En DBeaver: **File → Open File** → selecciona el `.sql`
+3. Asegúrate de que la conexión activa es la correcta (esquina superior del editor)
+4. Ejecuta con `Alt + X` (script completo)
+5. Refresca el árbol de objetos: clic derecho sobre la conexión → **Refresh**
+
+<Callout type="warning">
+El script incluye `DROP DATABASE IF EXISTS alke_wallet`. Si ya tienes datos de práctica anteriores, **se borrarán**. Ejecútalo solo cuando quieras empezar desde cero.
+</Callout>
+
+---
+
+## Consejos de productividad
+
+```sql
+-- Tip 1: siempre especifica la base de datos activa en el editor
+USE alke_wallet;
+
+-- Tip 2: comenta tu código — útil para guardar consultas frecuentes
+-- Obtener el saldo total de todos los usuarios
+SELECT SUM(saldo) AS saldo_total FROM usuarios;
+
+-- Tip 3: usa LIMIT durante exploración para no traer millones de filas
+SELECT * FROM transacciones LIMIT 20;
+
+-- Tip 4: antes de un DELETE/UPDATE, ejecuta el SELECT equivalente
+-- Primero: verificar qué filas serán afectadas
+SELECT * FROM usuarios WHERE saldo < 10000;
+-- Luego: ejecutar la acción
+-- DELETE FROM usuarios WHERE saldo < 10000;
+```
+
+---
+
+## Guardar scripts
+
+- **File → Save** (`Ctrl/Cmd + S`) guarda el script en disco
+- DBeaver recuerda los scripts abiertos entre sesiones
+- Organiza tus scripts por módulo en carpetas: `modulo-05/01-intro/`, `modulo-05/02-dml/`, etc.

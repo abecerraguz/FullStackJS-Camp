@@ -1,0 +1,34 @@
+---
+titulo: "Proyecto integrador"
+tipo: proyecto
+duracion: 10h
+objetivos:
+  - Implementar una API REST con arquitectura MVC conectada a PostgreSQL
+  - Encapsular la conexión al pool en una clase con manejo de errores y reintento
+  - Ejecutar transacciones ACID con bloqueo FOR UPDATE y ROLLBACK condicional
+  - Mapear errores de PostgreSQL a respuestas HTTP correctas
+---
+
+# Proyecto integrador
+
+## API REST Alke Wallet
+
+Desarrollar la **API REST de Alke Wallet** con Node.js y PostgreSQL, aplicando arquitectura MVC, Pool de conexiones encapsulado, transacciones ACID y ORM con Sequelize.
+
+**Paso a paso**
+
+1. Crea la base de datos `alke_wallet` en PostgreSQL con las tablas `usuarios` y `transacciones` (puedes usar el script del Módulo V como base).
+2. Implementa la clase `ConexionDB` con Pool privado (`#pool`), lógica de reintento al arrancar y listener de errores pasivos del pool.
+3. Construye la **arquitectura MVC**: carpetas `routes/`, `controllers/` y `models/` para el recurso `usuarios`.
+4. Implementa el **CRUD de usuarios** con consultas parametrizadas: `GET /api/usuarios`, `POST /api/usuarios`, `PUT /api/usuarios/:id`, `DELETE /api/usuarios/:id`.
+5. Agrega el endpoint `POST /api/transferencias` con transacción `BEGIN / FOR UPDATE / COMMIT / ROLLBACK` que valide saldo suficiente antes de transferir.
+6. Enriquece los errores con códigos PostgreSQL (`23505`, `23503`) mapeados a HTTP status codes correctos y configurar el middleware global de errores en Express.
+7. *(Opcional avanzado)* Define los modelos `Usuario` y `Publicacion` con **Sequelize**, configura `hasMany / belongsTo` y sincroniza el esquema con `db.sync({ alter: true })`.
+
+**Entregable**
+
+Sube el **link del repositorio GitHub** que contenga:
+- Proyecto completo con estructura MVC
+- `.env.sample` con todas las variables requeridas (sin credenciales reales)
+- `README.md` con instrucciones de configuración de PostgreSQL, instalación y ejecución
+- El repositorio **no debe incluir** `node_modules/` ni el archivo `.env` con credenciales

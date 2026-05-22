@@ -1,0 +1,113 @@
+---
+titulo: "Funciones en JavaScript (Parte II)"
+descripcion: "Scope, closures, funciones de orden superior, callbacks y métodos de arrays con funciones."
+tipo: "practica"
+modulo: 3
+duracion: "6h"
+objetivos:
+  - "Comprender el scope de bloque, función y global."
+  - "Explicar qué es un closure y cuándo se usa."
+  - "Pasar funciones como argumento (callbacks)."
+  - "Usar forEach, map, filter y reduce con funciones personalizadas."
+conceptosClave:
+  - "Scope (ámbito)"
+  - "Closure"
+  - "Callback"
+  - "Higher-order function"
+  - "IIFE"
+recursos:
+  - { nombre: "JavaScript.info — Closures", url: "https://es.javascript.info/closure" }
+  - { nombre: "MDN — Closures", url: "https://developer.mozilla.org/es/docs/Web/JavaScript/Closures" }
+---
+
+# Funciones en JavaScript (Parte II)
+
+## Scope (ámbito de variables)
+
+El **scope** define dónde es visible una variable.
+
+```javascript
+// Scope global
+const global = "soy global";
+
+function ejemplo() {
+  // Scope de función
+  const local = "soy local";
+  console.log(global); // ✅ accesible
+  console.log(local);  // ✅ accesible
+}
+
+console.log(global); // ✅
+console.log(local);  // ❌ ReferenceError
+
+// Scope de bloque (let y const)
+if (true) {
+  let bloqueada = "solo en el bloque";
+  const tambien = "igual";
+}
+console.log(bloqueada); // ❌ ReferenceError
+```
+
+## Closures
+
+Un **closure** es una función que recuerda las variables de su scope exterior, incluso después de que esa función exterior haya terminado.
+
+```javascript
+function crearContador() {
+  let count = 0; // variable "encerrada"
+
+  return function incrementar() {
+    count++;
+    return count;
+  };
+}
+
+const contador = crearContador();
+console.log(contador()); // 1
+console.log(contador()); // 2
+console.log(contador()); // 3
+
+// Cada llamada a crearContador() crea su propio scope
+const otroContador = crearContador();
+console.log(otroContador()); // 1 (independiente)
+```
+
+## Callbacks y funciones de orden superior
+
+Una **función de orden superior** recibe o retorna otra función.
+
+```javascript
+// forEach con callback
+const numeros = [1, 2, 3, 4, 5];
+numeros.forEach(function(n) {
+  console.log(n * 2);
+});
+
+// Con arrow function (forma más común)
+numeros.forEach(n => console.log(n * 2));
+
+// Función personalizada como callback
+function esPar(n) { return n % 2 === 0; }
+const pares = numeros.filter(esPar);
+// [2, 4]
+```
+
+<CodeEditor
+  initialCode={`// Ejercicio: Closure - Generador de multiplicadores
+// Escribe una función crearMultiplicador(factor) que retorne
+// una función que multiplique cualquier número por ese factor.
+
+function crearMultiplicador(factor) {
+  // Tu código aquí
+}
+
+function solution() {
+  const doble   = crearMultiplicador(2);
+  const triple  = crearMultiplicador(3);
+  const por10   = crearMultiplicador(10);
+  return [5, 7, 3].map(n =>
+    \`\${n} × 2=\${doble(n)} × 3=\${triple(n)} × 10=\${por10(n)}\`
+  ).join("\\n");
+}
+`}
+/>

@@ -1,0 +1,41 @@
+---
+titulo: "API RESTful, File Upload y JWT"
+descripcion: "API REST completa con MVC, subida de archivos y autenticación/autorización con JSON Web Tokens."
+modulo: 8
+---
+
+# Módulo VIII — API RESTful, File Upload y JWT
+
+En este módulo construyes una **API RESTful de producción** combinando tres bloques: arquitectura MVC, subida de archivos y autenticación segura con JWT. El proyecto final integra las tres capas sobre la misma base de código.
+
+## ¿Qué aprenderás?
+
+- **Arquitectura MVC** — Separación clara en Server → Routes → Controllers → Services → Database con respuestas JSON estandarizadas y HATEOAS.
+- **File Upload** — Middleware `express-fileupload`, validación de extensiones, generación de nombres únicos y servicio de archivos estáticos.
+- **JWT fundamentos** — Estructura `header.payload.signature`, `jwt.sign()`, `jwt.verify()`, expiración y esquema `Authorization: Bearer`.
+- **Access + Refresh tokens** — Par de secretos distintos, rotación de refresh tokens, blacklist en memoria y middleware `authenticateJWT`.
+- **Autorización por roles** — Factory `authorizeRoles` que protege rutas de escritura para el rol `admin`.
+
+## Proyecto integrador
+
+### API de Guitarras con JWT y File Upload
+
+Construir la **API RESTful de Guitarras** con Node.js y Express integrando las tres capas del módulo: arquitectura MVC, subida de imágenes con `express-fileupload` y autenticación/autorización con JWT (access + refresh tokens).
+
+**Paso a paso**
+
+1. Parte del proyecto `01-api-mvc` como base: estructura MVC, CRUD completo de guitarras con persistencia en `db.json`, respuestas estandarizadas, HATEOAS y manejo global de errores.
+2. Añade el campo `imagen` al modelo de guitarra. Integra `express-fileupload` con límite de 5 MB y extensiones `.jpg`, `.jpeg`, `.png`. Implementa `POST /api/v1/guitarras/:guitarId/imagen` para subir la imagen a `uploads/` y actualizar el registro.
+3. Sirve la carpeta `uploads/` como contenido estático y devuelve la URL pública en la respuesta.
+4. Implementa el servicio de autenticación con `loginService`, `refreshTokenService`, `logoutService` y `verifyAccessTokenService` usando par de secretos y rotación de refresh tokens.
+5. Crea `authenticateJWT` y el factory `authorizeRoles`. Protege todas las rutas de guitarras: lectura requiere autenticación, escritura requiere rol `admin`.
+6. Añade los endpoints `POST /auth/login`, `GET /auth/refresh` y `POST /auth/logout`.
+7. Verifica el flujo completo con Postman o Thunder Client: login → token → GET (usuario) → POST/PUT/DELETE (admin) → refresh → logout.
+
+**Entregable**
+
+Sube el **link del repositorio GitHub** que contenga:
+- Proyecto completo con estructura MVC
+- `.env.sample` con todas las variables requeridas sin valores reales
+- `README.md` con instrucciones de instalación y ejemplos de endpoints
+- El repositorio **no debe incluir** `node_modules/`, `.env` con credenciales reales ni la carpeta `uploads/` con archivos subidos

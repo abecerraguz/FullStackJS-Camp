@@ -1,0 +1,307 @@
+---
+titulo: "Servidor Web Full-Stack con Handlebars"
+descripcion: "Construye una aplicación web full-stack con Express como backend y Handlebars como motor de plantillas, integrando sesiones, assets de npm y manipulación de imágenes."
+tipo: proyecto
+duracion: "4h"
+objetivos:
+  - "Configurar Handlebars como motor de vistas en Express"
+  - "Crear layouts, partials y helpers personalizados"
+  - "Inyectar datos de sesión en las vistas con res.locals"
+  - "Servir dependencias de npm como archivos estáticos"
+  - "Integrar Bootstrap y axios en un proyecto Express/Handlebars"
+recursos:
+  - nombre: "express-handlebars — npm"
+    url: "https://www.npmjs.com/package/express-handlebars"
+  - nombre: "Handlebars — Documentación oficial"
+    url: "https://handlebarsjs.com/guide/"
+---
+
+# Servidor Web Full-Stack con Handlebars
+
+Cuando necesitas servir HTML dinámico desde el servidor sin usar React ni otro framework frontend, los **motores de plantillas** (template engines) son la solución. **Handlebars** es uno de los más populares del ecosistema Express.
+
+## Arquitectura del proyecto
+
+```
+app/
+├── index.js           ← Servidor principal
+├── package.json
+├── .env
+├── views/
+│   ├── layouts/
+│   │   └── main.handlebars   ← Layout principal
+│   ├── partials/
+│   │   ├── navbar.handlebars
+│   │   └── footer.handlebars
+│   ├── home.handlebars
+│   ├── perfil.handlebars
+│   └── login.handlebars
+├── public/
+│   ├── css/
+│   │   └── app.css
+│   └── js/
+│       └── app.js
+└── lib/
+    └── hbs-helpers.js    ← Helpers personalizados
+```
+
+## Instalación
+
+```bash
+npm install express express-handlebars express-session dotenv
+npm install --save-dev nodemon
+```
+
+<Callout type="tip">
+**Alternativas nativas de Node.js**
+
+- **`--watch`** (Node v18.11+, estable en v22+): reemplaza `nodemon` → `node --watch index.js`
+- **`--env-file`** (Node v20.6+, estable en v22+): reemplaza `dotenv` → `node --env-file=.env index.js`
+
+Con Node v20+ puedes combinar ambos: `node --env-file=.env --watch index.js` y eliminar `dotenv` de las dependencias.
+</Callout>
+
+## Configurar Handlebars en Express
+
+```javascript
+// index.js
+import express from "express";
+import { create as createHbs } from "express-handlebars";
+import session from "express-session";
+import path from "path";
+import { fileURLToPath } from "url";
+import "dotenv/config";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const app = express();
+
+// ── Handlebars ──────────────────────────────────────────────
+import { helpers } from "./lib/hbs-helpers.js";
+
+const hbs = createHbs({
+  helpers,
+  partialsDir: [path.join(__dirname, "views/partials")],
+  defaultLayout: "main",
+  extname: ".handlebars",
+});
+
+app.engine("handlebars", hbs.engine);
+app.set("view engine", "handlebars");
+app.set("views", path.join(__dirname, "views"));
+
+// ── Middlewares ──────────────────────────────────────────────
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Servir archivos estáticos
+app.use(express.static(path.join(__dirname, "public")));
+
+// Servir Bootstrap y axios desde node_modules
+app.use("/bootstrap", express.static(path.join(__dirname, "node_modules/bootstrap/dist")));
+app.use("/axios", express.static(path.join(__dirname, "node_modules/axios/dist")));
+
+// Sesiones
+app.use(session({
+  secret: process.env.SESSION_SECRET ?? "secreto-dev",
+  resave: false,
+  saveUninitialized: false,
+  cookie: { maxAge: 1000 * 60 * 60 },
+}));
+
+// ── Middleware global: inyectar sesión en todas las vistas ──
+app.use((req, res, next) => {
+  res.locals.usuario = req.session.usuario ?? null;
+  res.locals.autenticado = !!req.session.usuario;
+  next();
+});
+```
+
+## Layout principal
+
+```handlebars
+{{!-- views/layouts/main.handlebars --}}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{titulo}} | Mi App</title>
+  <link rel="stylesheet" href="/bootstrap/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  {{> navbar}}
+
+  <main class="container py-4">
+    {{#if mensaje}}
+      <div class="alert alert-{{tipoMensaje}}">{{mensaje}}</div>
+    {{/if}}
+
+    {{{body}}}
+  </main>
+
+  {{> footer}}
+
+  <script src="/bootstrap/js/bootstrap.bundle.min.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
+```
+
+## Partials
+
+```handlebars
+{{!-- views/partials/navbar.handlebars --}}
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container">
+    <a class="navbar-brand" href="/">MiApp</a>
+    <div class="d-flex">
+      {{#if autenticado}}
+        <span class="text-white me-3 d-flex align-items-center">
+          Hola, {{usuario.nombre}}
+        </span>
+        <form method="POST" action="/auth/logout">
+          <button class="btn btn-outline-light btn-sm">Salir</button>
+        </form>
+      {{else}}
+        <a href="/login" class="btn btn-outline-light btn-sm">Iniciar sesión</a>
+      {{/if}}
+    </div>
+  </div>
+</nav>
+```
+
+## Helpers personalizados
+
+```javascript
+// lib/hbs-helpers.js
+export const helpers = {
+  // Formatear fecha
+  formatDate(fecha) {
+    return new Date(fecha).toLocaleDateString("es-CL", {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+  },
+
+  // Capitalizar texto
+  capitalize(texto) {
+    if (!texto) return "";
+    return texto.charAt(0).toUpperCase() + texto.slice(1).toLowerCase();
+  },
+
+  // Comparación para condicionales
+  eq(a, b) {
+    return a === b;
+  },
+
+  // Pluralizar
+  pluralize(valor, singular, plural) {
+    return Number(valor) === 1 ? singular : plural;
+  },
+};
+```
+
+## Rutas con vistas
+
+```javascript
+// Rutas en index.js (continuación)
+
+// Página de inicio
+app.get("/", (req, res) => {
+  res.render("home", {
+    titulo: "Inicio",
+    bienvenida: "Bienvenido a la plataforma",
+    productos: [
+      { nombre: "Laptop", precio: 999 },
+      { nombre: "Mouse", precio: 29 },
+    ],
+  });
+});
+
+// Formulario de login (GET)
+app.get("/login", (req, res) => {
+  if (req.session.usuario) return res.redirect("/perfil");
+  res.render("login", { titulo: "Iniciar sesión" });
+});
+
+// Procesar login (POST)
+app.post("/login", (req, res) => {
+  const { email, password } = req.body;
+
+  const usuarios = [
+    { id: 1, nombre: "Ana", email: "ana@demo.com", password: "1234" },
+  ];
+
+  const usuario = usuarios.find(
+    (u) => u.email === email && u.password === password
+  );
+
+  if (!usuario) {
+    return res.render("login", {
+      titulo: "Iniciar sesión",
+      error: "Credenciales incorrectas",
+    });
+  }
+
+  req.session.usuario = { id: usuario.id, nombre: usuario.nombre, email: usuario.email };
+  res.redirect("/perfil");
+});
+
+// Perfil (protegido)
+app.get("/perfil", (req, res) => {
+  if (!req.session.usuario) return res.redirect("/login");
+  res.render("perfil", {
+    titulo: "Mi Perfil",
+    usuario: req.session.usuario,
+  });
+});
+
+// Logout
+app.post("/auth/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.clearCookie("connect.sid");
+    res.redirect("/login");
+  });
+});
+
+app.listen(3000, () => console.log("Servidor en http://localhost:3000"));
+```
+
+## Vista de login
+
+```handlebars
+{{!-- views/login.handlebars --}}
+<div class="row justify-content-center">
+  <div class="col-md-4">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h4 class="card-title mb-4">Iniciar sesión</h4>
+
+        {{#if error}}
+          <div class="alert alert-danger">{{error}}</div>
+        {{/if}}
+
+        <form method="POST" action="/login">
+          <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input type="email" name="email" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Contraseña</label>
+            <input type="password" name="password" class="form-control" required>
+          </div>
+          <button type="submit" class="btn btn-primary w-100">
+            Entrar
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+```
+
+<Callout type="info">
+Handlebars es una buena opción para apps con rendering server-side (SSR). Para apps con alta interactividad, considera pasar a React o Vue en el frontend y usar Express solo como API.
+</Callout>

@@ -1,0 +1,76 @@
+---
+titulo: "JavaScript Intermedio"
+descripcion: "Matrices, funciones avanzadas, objetos y objetos nativos de JavaScript. Scope, closures, métodos de arrays y strings."
+modulo: 3
+---
+
+# Módulo III — JavaScript Intermedio
+
+## Objetivo general
+
+Al finalizar este módulo dominarás las estructuras de datos fundamentales de JavaScript (arrays y objetos), escribirás funciones de orden superior y usarás los objetos nativos del lenguaje para resolver problemas reales con código limpio y expresivo.
+
+## Objetivos específicos
+
+- Crear y manipular arrays con métodos como `map`, `filter`, `reduce`, `find` y `sort`.
+- Escribir funciones declaradas, expresadas y arrow functions con parámetros por defecto y rest/spread.
+- Comprender el scope de variables y el concepto de closure.
+- Crear y acceder a propiedades de objetos literales.
+- Usar objetos nativos: `Math`, `String`, `Date` y `JSON`.
+
+## Contenido del módulo
+
+| # | Tema | Tipo | Duración |
+|---|------|------|----------|
+| 1 | Matrices y Arrays | Teoría + Práctica | 4h |
+| 2 | Funciones en JavaScript (Parte I) | Práctica | 6h |
+| 3 | Funciones en JavaScript (Parte II) | Práctica | 6h |
+| 4 | Objetos en JavaScript | Teoría + Práctica | 4h |
+| 5 | Objetos Nativos de JavaScript | Práctica | 4h |
+
+## Conceptos clave
+
+| Concepto | Descripción |
+|----------|-------------|
+| **Array** | Colección ordenada de elementos accesibles por índice. |
+| **Método de array** | Función integrada para transformar arrays: `map`, `filter`, `reduce`, etc. |
+| **Scope** | Ámbito de visibilidad de una variable (global, función, bloque). |
+| **Closure** | Función que recuerda el scope en el que fue creada, incluso cuando se ejecuta fuera. |
+| **Objeto literal** | Colección de pares clave-valor: `{ nombre: "Ana", edad: 25 }`. |
+| **Destructuring** | Sintaxis para extraer valores de arrays u objetos en variables. |
+| **Spread / Rest** | `...` para expandir o agrupar elementos. |
+
+## Prerrequisitos
+
+- Haber completado el Módulo II (variables, condicionales, bucles, funciones básicas, DOM).
+
+## Recursos adicionales
+
+- [JavaScript.info — Arrays](https://es.javascript.info/array) — Guía completa con métodos.
+- [JavaScript.info — Objects](https://es.javascript.info/object) — Objetos en profundidad.
+- [MDN — Array.prototype](https://developer.mozilla.org/es/docs/Web/JavaScript/Reference/Global_Objects/Array) — Referencia de todos los métodos.
+- [Eloquent JavaScript (cap. 4 y 5)](https://eloquentjavascript.net/) — Lectura recomendada (en inglés, gratuito).
+
+## Proyecto integrador
+
+### Sistema de Reportes de Inventario
+
+Construir un **sistema de reportes de inventario** que demuestre el dominio de los métodos de arrays y objetos nativos de JavaScript, aplicando programación funcional sobre un dataset real.
+
+**Dataset de trabajo:** [productos.json](/data/productos.json) — 20 productos con `id`, `nombre`, `precio`, `categoria`, `stock` y `fechaIngreso`.
+
+**Paso a paso**
+
+1. Carga el archivo `productos.json` en tu script e imprime el total de productos cargados.
+2. **Filtrado**: genera un array solo con productos disponibles (stock > 0) de la categoría `"ropa"`.
+3. **Transformación**: aplica un descuento del 15% a los productos de `"calzado"` usando `map`.
+4. **Estadísticas** con `reduce`: precio promedio de todos los productos, producto más caro (nombre y precio) y valor total del inventario (precio × stock).
+5. **Antigüedad**: usa `Date` para calcular cuántos días lleva cada producto en inventario desde `fechaIngreso`.
+6. **Reporte formateado**: usa métodos de `String` para imprimir un resumen tabulado en consola con todos los resultados.
+
+**Entregable**
+
+Sube el **link del repositorio GitHub** o un archivo `.zip` con el nombre `apellido_nombre_modulo3.zip` que contenga:
+- El archivo `index.js` con todas las funciones implementadas
+- El archivo `productos.json` usado como dataset
+- Captura de pantalla de la consola con el reporte generado

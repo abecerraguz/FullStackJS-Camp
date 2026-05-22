@@ -1,0 +1,273 @@
+---
+titulo: "Transacciones, Cursores y Retry"
+tipo: practica
+duracion: 8h
+objetivos:
+  - Ejecutar transacciones ACID con BEGIN / COMMIT / ROLLBACK
+  - Leer grandes volúmenes de datos con pg-cursor sin saturar la memoria
+  - Diferenciar errores transitorios (red) de errores permanentes (lógica)
+  - Implementar reintento con backoff exponencial
+  - Aplicar el patrón en un endpoint de transferencia bancaria
+recursos:
+  - { nombre: "Transacciones — node-postgres docs", url: "https://node-postgres.com/features/transactions" }
+  - { nombre: "pg-cursor en npm", url: "https://www.npmjs.com/package/pg-cursor" }
+  - { nombre: "ACID — PostgreSQL docs", url: "https://www.postgresql.org/docs/current/tutorial-transactions.html" }
+---
+
+# Transacciones, Cursores y Retry
+
+## ¿Qué es una transacción?
+
+Una transacción agrupa varias operaciones SQL en una unidad **atómica**: o todas tienen éxito, o ninguna se aplica.
+
+Las propiedades **ACID** que garantiza PostgreSQL:
+
+| Propiedad | Significado |
+|-----------|-------------|
+| **Atomicity** | Todo o nada — no quedan cambios a medias |
+| **Consistency** | La BD pasa de un estado válido a otro estado válido |
+| **Isolation** | Transacciones concurrentes no se interfieren |
+| **Durability** | Los cambios confirmados sobreviven a reinicios |
+
+## BEGIN / COMMIT / ROLLBACK
+
+El patrón básico con `pool.connect()`:
+
+```javascript
+import pg from "pg";
+
+const { Pool } = pg;
+const pool = new Pool({
+  user: "postgres", host: "localhost",
+  password: "postgres", database: "clientes", port: 5432,
+});
+
+pool.connect(async (error, client, release) => {
+  await client.query("BEGIN");
+
+  try {
+    // Operación 1: descontar saldo
+    await client.query(
+      "UPDATE usuarios SET saldo = saldo - $1 WHERE email = $2",
+      [200000, "joselyn@demo.com"]
+    );
+
+    // Operación 2: acreditar saldo
+    await client.query(
+      "UPDATE usuarios SET saldo = saldo + $1 WHERE email = $2",
+      [200000, "pedro@demo.com"]
+    );
+
+    await client.query("COMMIT");
+    console.log("Transferencia completada.");
+
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error("Transacción revertida.");
+    // pg enriquece el error con metadatos:
+    console.error("Código PG:", e.code);     // '23514' = check_violation, etc.
+    console.error("Detalle:",  e.detail);    // qué constraint falló
+    console.error("Tabla:",    e.table);     // tabla origen del error
+    console.error("Constraint:", e.constraint);
+  } finally {
+    release(); // Siempre devolver al pool
+    pool.end();
+  }
+});
+```
+
+<Callout type="warning">
+**Nunca** uses `pool.query()` dentro de una transacción. Cada llamada a `pool.query()` puede usar una conexión diferente del pool — las transacciones requieren que todas las operaciones pasen por **el mismo cliente**.
+</Callout>
+
+## Transacciones en arquitectura MVC
+
+En un endpoint de transferencia bancaria, el modelo ejecuta la transacción completa:
+
+```javascript
+// models/Cliente.js (fragmento — transferencia)
+import db from "../config/db.js";
+
+const pool = db.pool;
+
+export const transferir = async (emailOrigen, emailDestino, monto) => {
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query("BEGIN");
+
+    // Verificar que el origen tenga saldo suficiente
+    const { rows } = await client.query(
+      "SELECT saldo FROM usuarios WHERE email = $1 FOR UPDATE",
+      [emailOrigen]
+    );
+
+    if (!rows[0] || rows[0].saldo < monto) {
+      const err = new Error("Saldo insuficiente.");
+      err.statusCode = 422;
+      throw err;
+    }
+
+    await client.query(
+      "UPDATE usuarios SET saldo = saldo - $1 WHERE email = $2",
+      [monto, emailOrigen]
+    );
+
+    await client.query(
+      "UPDATE usuarios SET saldo = saldo + $1 WHERE email = $2",
+      [monto, emailDestino]
+    );
+
+    await client.query("COMMIT");
+    return { ok: true, mensaje: "Transferencia realizada." };
+
+  } catch (error) {
+    if (client) await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    if (client) client.release();
+  }
+};
+```
+
+<Callout type="info">
+El `FOR UPDATE` en el SELECT bloquea las filas mientras dura la transacción, evitando condiciones de carrera cuando hay transferencias concurrentes al mismo usuario.
+</Callout>
+
+## Cursores con pg-cursor
+
+Un `SELECT *` sobre una tabla de 500.000 filas carga **todo en memoria**. Los cursores permiten leer el resultado en lotes (chunks), controlando el consumo de RAM:
+
+```bash
+npm install pg-cursor
+```
+
+```javascript
+// index.js — lectura de tabla grande con cursor
+import pg from "pg";
+import Cursor from "pg-cursor";
+
+const { Pool } = pg;
+const pool = new Pool({ /* config */ });
+
+const leerConCursor = async () => {
+  const client = await pool.connect();
+
+  // Crear el cursor — NO ejecuta la query todavía
+  const cursor = client.query(new Cursor("SELECT * FROM ventas ORDER BY id"));
+
+  const BATCH_SIZE = 100; // leer 100 filas por vez
+  let totalProcesadas = 0;
+
+  try {
+    while (true) {
+      // read() devuelve un array de hasta BATCH_SIZE filas
+      const filas = await cursor.read(BATCH_SIZE);
+
+      if (filas.length === 0) break; // cursor agotado
+
+      // Procesar el lote (ej: transformar, guardar en otro lado)
+      totalProcesadas += filas.length;
+      console.log(`Procesadas: ${totalProcesadas} filas`);
+    }
+    console.log(`Total: ${totalProcesadas} filas procesadas.`);
+  } finally {
+    await cursor.close(); // liberar recursos del cursor en el servidor
+    client.release();
+  }
+};
+
+leerConCursor();
+```
+
+### ¿Cuándo usar cursores?
+
+| Situación | Recomendación |
+|-----------|--------------|
+| Tabla pequeña (< 10.000 filas) | `pool.query()` directamente |
+| Tabla grande (> 50.000 filas) | Cursor con batches |
+| Exportación a CSV/JSON | Cursor + stream |
+| ETL / migración de datos | Cursor con lotes |
+
+## Retry con backoff exponencial
+
+Los errores de red son **transitorios** — la BD puede estar reiniciando o la red puede tener un pico de latencia. Vale la pena reintentar. Los errores de lógica (tabla no existe, constraint violado) son **permanentes** — reintentar no cambia nada.
+
+```javascript
+// Errores de red/infraestructura que justifican reintento
+const ERRORES_TRANSITORIOS = new Set([
+  "ECONNRESET",   // Conexión cortada por el servidor
+  "ECONNREFUSED", // PostgreSQL no arrancó aún
+  "ETIMEDOUT",    // Timeout de red
+  "57P03",        // cannot_connect_now (BD inicializando)
+  "53300",        // too_many_connections
+  "08006",        // connection_failure
+]);
+
+const esTransitorio = (error) =>
+  ERRORES_TRANSITORIOS.has(error.code) || ERRORES_TRANSITORIOS.has(error.codigoPg);
+
+/**
+ * conReintento: envuelve cualquier función async con lógica de reintento.
+ * @param fn          - La operación a ejecutar (debe ser async)
+ * @param maxIntentos - Cuántas veces intentarlo (default: 3)
+ * @param delayBaseMs - Tiempo base entre intentos en ms (default: 300)
+ */
+const conReintento = async (fn, maxIntentos = 3, delayBaseMs = 300) => {
+  for (let intento = 1; intento <= maxIntentos; intento++) {
+    try {
+      return await fn();
+    } catch (error) {
+      // Errores permanentes o último intento → propagar inmediatamente
+      if (!esTransitorio(error) || intento === maxIntentos) {
+        throw error;
+      }
+
+      // Backoff exponencial: 300ms → 600ms → 1200ms
+      const delay = delayBaseMs * Math.pow(2, intento - 1);
+      console.warn(`[Retry] Intento ${intento}/${maxIntentos}. Reintentando en ${delay}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+};
+```
+
+### Uso en el modelo
+
+```javascript
+// Envolver la operación con conReintento
+export const crearCliente = async (datos) => {
+  return conReintento(async () => {
+    let client;
+    try {
+      client = await pool.connect();
+      const { rows } = await client.query(
+        "INSERT INTO clientes (nombre, email) VALUES ($1, $2) RETURNING *",
+        [datos.nombre, datos.email]
+      );
+      return rows[0];
+    } finally {
+      if (client) client.release();
+    }
+  });
+};
+```
+
+## Resumen de patrones
+
+```
+Transacción simple
+  pool.connect() → BEGIN → query1 → query2 → COMMIT
+                                   ↕ error → ROLLBACK
+                   finally: client.release()
+
+Cursor (tabla grande)
+  pool.connect() → new Cursor(sql) → cursor.read(N) × bucle
+                   finally: cursor.close() + client.release()
+
+Retry (errores transitorios)
+  conReintento(fn, 3, 300)
+    └─ intento 1 → falla (ECONNRESET) → 300ms
+    └─ intento 2 → falla (ECONNRESET) → 600ms
+    └─ intento 3 → éxito ✅
+```

@@ -1,0 +1,245 @@
+---
+titulo: "El Lenguaje HTML"
+descripcion: "Explora la estructura de un documento HTML5, las etiquetas semánticas, atributos esenciales, formularios y buenas prácticas de accesibilidad."
+tipo: "teoria"
+modulo: 2
+duracion: "6h"
+objetivos:
+  - "Comprender la estructura básica de un documento HTML5."
+  - "Usar etiquetas semánticas correctamente (header, nav, main, section, aside, footer)."
+  - "Aplicar atributos de accesibilidad (lang, aria-label, alt, role)."
+  - "Construir formularios con validación nativa HTML5."
+conceptosClave:
+  - "DOCTYPE"
+  - "HTML semántico"
+  - "Atributos"
+  - "Formularios"
+  - "Accesibilidad web (a11y)"
+recursos:
+  - { nombre: "MDN — Referencia de elementos HTML", url: "https://developer.mozilla.org/es/docs/Web/HTML/Element" }
+  - { nombre: "HTML Validator W3C", url: "https://validator.w3.org/" }
+  - { nombre: "WebAIM — WCAG Checklist", url: "https://webaim.org/standards/wcag/checklist" }
+---
+
+# El Lenguaje HTML
+
+HTML (HyperText Markup Language) es el lenguaje que define la **estructura y el significado** del contenido de una página web. No es un lenguaje de programación — es un lenguaje de marcado.
+
+---
+
+## 1. Estructura básica de un documento HTML5
+
+```html
+<!DOCTYPE html>
+<!--
+  DOCTYPE le indica al navegador que este documento usa HTML5.
+  Sin él, el navegador puede entrar en "modo de compatibilidad"
+  y renderizar la página de forma inconsistente.
+-->
+<html lang="es">
+<!--
+  lang="es" ayuda a:
+  - Lectores de pantalla (pronunciación correcta)
+  - Herramientas de traducción automática
+  - SEO (señala el idioma del contenido)
+-->
+<head>
+  <meta charset="UTF-8" />
+  <!--
+    UTF-8 soporta todos los caracteres: tildes, ñ, emojis, etc.
+    Siempre debe ser el primer elemento del <head>.
+  -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!--
+    Esencial para el diseño responsivo.
+    Sin esto, los móviles renderizan la página a 980px de ancho
+    y la escalan hacia abajo, arruinando el diseño.
+  -->
+  <title>Mi primera página</title>
+</head>
+<body>
+  <!-- Contenido visible de la página -->
+</body>
+</html>
+```
+
+<Callout type="tip">
+Siempre declara `lang` en `<html>` y `charset` como primer `<meta>` en el `<head>`. Estas dos líneas mejoran accesibilidad y evitan problemas de codificación.
+</Callout>
+
+---
+
+## 2. Etiquetas semánticas de HTML5
+
+Las etiquetas **semánticas** tienen significado propio — le dicen al navegador y a los motores de búsqueda qué tipo de contenido contienen.
+
+```html
+<body>
+  <header>
+    <!-- Encabezado del sitio: logo, título principal -->
+    <h1>Mi Sitio Web</h1>
+    <nav>
+      <!-- Navegación principal -->
+      <ul>
+        <li><a href="/">Inicio</a></li>
+        <li><a href="/sobre">Sobre mí</a></li>
+        <li><a href="/contacto">Contacto</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Contenido principal único de la página -->
+    <article>
+      <!-- Contenido independiente (post de blog, artículo) -->
+      <h2>Título del artículo</h2>
+      <p>Primer párrafo del artículo.</p>
+    </article>
+
+    <section>
+      <!-- Sección temática dentro del contenido -->
+      <h2>Otra sección</h2>
+    </section>
+  </main>
+
+  <aside>
+    <!-- Contenido secundario relacionado (sidebar) -->
+    <h3>Artículos relacionados</h3>
+  </aside>
+
+  <footer>
+    <!-- Pie de página: copyright, links legales -->
+    <p>&copy; 2025 Mi Sitio</p>
+  </footer>
+</body>
+```
+
+| Etiqueta | Uso correcto |
+|----------|-------------|
+| `<header>` | Encabezado de la página o de una sección |
+| `<nav>` | Conjunto de enlaces de navegación |
+| `<main>` | Contenido principal (solo uno por página) |
+| `<article>` | Contenido autónomo y reutilizable |
+| `<section>` | Grupo temático de contenido |
+| `<aside>` | Contenido secundario o complementario |
+| `<footer>` | Pie de página o de sección |
+
+<Callout type="warning">
+No uses `<div>` para todo. Los `<div>` no tienen significado semántico. Úsalos solo cuando ninguna etiqueta semántica sea apropiada.
+</Callout>
+
+---
+
+## 3. Atributos importantes
+
+Los **atributos** agregan información o comportamiento a las etiquetas.
+
+```html
+<!-- Imágenes: alt es obligatorio para accesibilidad y SEO -->
+<img src="perfil.jpg" alt="Foto de perfil de Ana García" width="200" height="200" />
+
+<!-- Enlace externo: rel="noopener" previene vulnerabilidades de seguridad -->
+<a href="https://github.com" target="_blank" rel="noopener noreferrer">
+  GitHub
+</a>
+
+<!-- Enlace interno (ancla) -->
+<a href="#seccion-contacto">Ir a Contacto</a>
+
+<!-- Botón con tipo explícito (evita submit accidental en formularios) -->
+<button type="button">Cancelar</button>
+<button type="submit">Enviar</button>
+```
+
+---
+
+## 4. Formularios
+
+Los formularios son la principal forma de recibir datos del usuario.
+
+```html
+<form action="/enviar" method="POST">
+  <!-- method="POST" para datos sensibles; method="GET" para búsquedas -->
+
+  <label for="nombre">Nombre completo</label>
+  <input
+    type="text"
+    id="nombre"
+    name="nombre"
+    placeholder="Ej: Ana García"
+    required
+    minlength="2"
+    maxlength="50"
+  />
+  <!--
+    El atributo "for" del label debe coincidir con el "id" del input.
+    Esto vincula el label al campo para mejorar accesibilidad.
+  -->
+
+  <label for="email">Correo electrónico</label>
+  <input
+    type="email"
+    id="email"
+    name="email"
+    placeholder="correo@ejemplo.com"
+    required
+  />
+
+  <label for="edad">Edad</label>
+  <input type="number" id="edad" name="edad" min="18" max="99" />
+
+  <label for="pais">País</label>
+  <select id="pais" name="pais">
+    <option value="">-- Selecciona --</option>
+    <option value="CL">Chile</option>
+    <option value="AR">Argentina</option>
+    <option value="MX">México</option>
+  </select>
+
+  <button type="submit">Enviar formulario</button>
+</form>
+```
+
+<Callout type="tip">
+Usa siempre `<label>` vinculado al input con `for`/`id`. Mejora la usabilidad (al hacer clic en el label, el cursor va al input) y es fundamental para lectores de pantalla.
+</Callout>
+
+---
+
+## 5. Accesibilidad básica (a11y)
+
+La accesibilidad web permite que personas con discapacidades puedan usar tu sitio.
+
+```html
+<!-- Skip link: permite a usuarios de teclado saltar la navegación -->
+<a href="#contenido-principal" class="skip-link">
+  Saltar al contenido principal
+</a>
+
+<!-- aria-label para elementos sin texto visible -->
+<button aria-label="Cerrar menú de navegación">
+  <!-- Ícono SVG sin texto -->
+  <svg>...</svg>
+</button>
+
+<!-- role para indicar el propósito de un elemento genérico -->
+<div role="alert" aria-live="polite">
+  Formulario enviado correctamente.
+</div>
+
+<!-- Atributo lang en contenido en otro idioma -->
+<p>El término <span lang="en">responsive design</span> se refiere a...</p>
+```
+
+---
+
+## 6. Ejercicio
+
+Construye la estructura HTML completa de un perfil de estudiante que incluya:
+
+1. Un `<header>` con el nombre y una foto (usa `<img>` con `alt` descriptivo).
+2. Un `<main>` con dos `<section>`: "Sobre mí" y "Habilidades" (usa una `<ul>`).
+3. Un `<form>` de contacto con: nombre, email, mensaje (`<textarea>`) y botón de envío.
+4. Un `<footer>` con el año y un enlace a tu GitHub.
+
+Valida tu HTML en [validator.w3.org](https://validator.w3.org/) antes de considerarlo terminado.

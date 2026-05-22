@@ -1,0 +1,395 @@
+---
+titulo: "DOM, Eventos y Async"
+descripcion: "Selección y manipulación del DOM, delegación de eventos, Promises, async/await y proyecto Gestor de Tareas."
+tipo: "proyecto"
+modulo: 4
+duracion: "8h"
+objetivos:
+  - "Seleccionar y modificar elementos del DOM de forma segura."
+  - "Crear y eliminar nodos dinámicamente."
+  - "Manejar eventos con addEventListener y delegación."
+  - "Entender el event loop, callbacks y Promises."
+  - "Usar async/await con try/catch para operaciones asíncronas."
+  - "Construir un Gestor de Tareas completo con DOM nativo."
+conceptosClave:
+  - "querySelector / querySelectorAll"
+  - "createElement / textContent"
+  - "addEventListener"
+  - "Event bubbling y delegación"
+  - "Promise"
+  - "async / await"
+  - "try / catch"
+recursos:
+  - { nombre: "MDN — Introducción al DOM", url: "https://developer.mozilla.org/es/docs/Web/API/Document_Object_Model/Introduction" }
+  - { nombre: "JavaScript.info — Eventos", url: "https://es.javascript.info/events" }
+  - { nombre: "JavaScript.info — async/await", url: "https://es.javascript.info/async-await" }
+---
+
+# DOM, Eventos y Async
+
+El **Document Object Model (DOM)** es la representación en memoria del HTML de la página. Con JavaScript puedes leerlo, modificarlo y reaccionar a las acciones del usuario en tiempo real.
+
+---
+
+## Selección de elementos
+
+```javascript
+// Un solo elemento
+const titulo    = document.querySelector("h1");
+const boton     = document.querySelector("#btn-guardar");
+const primerLi  = document.querySelector("ul li");
+
+// Múltiples elementos → NodeList (iterable)
+const items     = document.querySelectorAll(".item");
+const botones   = document.querySelectorAll("button[data-accion]");
+
+// Iterar
+items.forEach(item => console.log(item.textContent));
+
+// Convertir a array para usar .map, .filter, etc.
+const textos = [...items].map(el => el.textContent.trim());
+```
+
+---
+
+## Leer y modificar contenido
+
+```javascript
+const p = document.querySelector("#descripcion");
+
+// Leer
+console.log(p.textContent); // texto plano (seguro)
+console.log(p.innerHTML);   // HTML interno (cuidado con XSS)
+
+// Escribir — siempre preferir textContent sobre innerHTML
+p.textContent = "Nuevo texto";
+
+// Atributos
+const img = document.querySelector("img");
+img.setAttribute("alt", "Logo de la empresa");
+img.src = "nuevo-logo.png"; // acceso directo como propiedad
+
+// Dataset (data-*)
+const card = document.querySelector(".card");
+card.dataset.id     = "42";
+card.dataset.estado = "activo";
+console.log(card.dataset.id); // "42"
+```
+
+---
+
+## Crear y eliminar nodos
+
+<Callout type="warning">
+Nunca uses `innerHTML = inputDeUsuario` — es una puerta directa a ataques XSS. Usa `createElement` + `textContent`.
+</Callout>
+
+```javascript
+function crearItemTarea(texto, id) {
+  const li = document.createElement("li");
+  li.className = "tarea-item";
+  li.dataset.id = id;
+
+  const span = document.createElement("span");
+  span.textContent = texto;             // seguro: no interpreta HTML
+
+  const btnEliminar = document.createElement("button");
+  btnEliminar.textContent = "×";
+  btnEliminar.className   = "btn-eliminar";
+  btnEliminar.setAttribute("aria-label", `Eliminar tarea: ${texto}`);
+
+  li.append(span, btnEliminar);
+  return li;
+}
+
+const lista = document.querySelector("#lista-tareas");
+lista.appendChild(crearItemTarea("Aprender DOM", 1));
+
+// Eliminar un elemento
+function eliminarPorId(id) {
+  const el = document.querySelector(`[data-id="${id}"]`);
+  el?.remove();
+}
+```
+
+---
+
+## Eventos y delegación
+
+### `addEventListener`
+
+```javascript
+const btn = document.querySelector("#btn-agregar");
+
+btn.addEventListener("click", (event) => {
+  console.log("Click en botón", event.target);
+});
+
+// Prevenir comportamiento por defecto (ej: envío de formulario)
+const form = document.querySelector("#form-tarea");
+form.addEventListener("submit", (event) => {
+  event.preventDefault();                  // no recarga la página
+  const valor = event.target.texto.value.trim();
+  if (valor) agregarTarea(valor);
+});
+```
+
+### Event Bubbling y Delegación
+
+Los eventos **suben** del elemento hijo hacia el padre. La **delegación** aprovecha esto para escuchar en un contenedor en lugar de asignar un listener a cada hijo:
+
+```javascript
+// ❌ Ineficiente: un listener por cada botón
+document.querySelectorAll(".btn-eliminar").forEach(btn => {
+  btn.addEventListener("click", () => { /* ... */ });
+});
+
+// ✅ Delegación: un solo listener en el contenedor
+const lista = document.querySelector("#lista-tareas");
+lista.addEventListener("click", (event) => {
+  const btn = event.target.closest(".btn-eliminar");
+  if (!btn) return; // click en otro lugar — ignorar
+
+  const li = btn.closest("li");
+  const id = li?.dataset.id;
+  if (id) eliminarTarea(id);
+});
+```
+
+<Callout type="tip">
+`event.target.closest(selector)` sube por el árbol DOM hasta encontrar el primer ancestro que coincide. Es más robusto que `event.target.matches()` cuando el click cae en un elemento hijo del botón (como un ícono SVG).
+</Callout>
+
+---
+
+## Asincronía — el Event Loop
+
+JavaScript es **single-threaded**: ejecuta una sola operación a la vez. Las operaciones lentas (fetch, timers, I/O) se delegan al navegador y su resultado se procesa en la **cola de microtareas** o **macrotareas**.
+
+```javascript
+console.log("1 — síncrono");
+
+setTimeout(() => {
+  console.log("3 — macrotarea (timer)");
+}, 0);
+
+Promise.resolve().then(() => {
+  console.log("2 — microtarea (promise)");
+});
+
+console.log("4 — síncrono");
+
+// Orden de salida:
+// "1 — síncrono"
+// "4 — síncrono"
+// "2 — microtarea (promise)"   ← microtareas antes que macrotareas
+// "3 — macrotarea (timer)"
+```
+
+---
+
+## Promises
+
+Una **Promise** representa un valor que aún no está disponible:
+
+```javascript
+function esperarMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function obtenerUsuario(id) {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      if (id <= 0) {
+        reject(new Error("ID inválido"));
+        return;
+      }
+      resolve({ id, nombre: "Ana", rol: "admin" });
+    }, 300);
+  });
+}
+
+// Encadenamiento con .then / .catch
+obtenerUsuario(1)
+  .then(usuario => {
+    console.log("Usuario:", usuario.nombre);
+    return usuario.rol;
+  })
+  .then(rol => console.log("Rol:", rol))
+  .catch(err => console.error("Error:", err.message))
+  .finally(() => console.log("Fin"));
+```
+
+---
+
+## `async` / `await`
+
+La misma lógica con **sintaxis lineal** y más legible:
+
+```javascript
+async function cargarDashboard(usuarioId) {
+  try {
+    const usuario = await obtenerUsuario(usuarioId);
+    console.log(`Bienvenido, ${usuario.nombre}`);
+
+    // Operaciones paralelas con Promise.all
+    const [perfil, notificaciones] = await Promise.all([
+      fetch(`/api/perfil/${usuarioId}`).then(r => r.json()),
+      fetch(`/api/notificaciones/${usuarioId}`).then(r => r.json()),
+    ]);
+
+    return { usuario, perfil, notificaciones };
+  } catch (error) {
+    console.error("Error cargando dashboard:", error.message);
+    throw error; // re-lanzar si el caller también debe manejarlo
+  } finally {
+    console.log("Carga finalizada");
+  }
+}
+```
+
+---
+
+## Proyecto: Gestor de Tareas
+
+Integra DOM + Eventos + Asincronía en un mini sistema completo:
+
+```javascript
+// fakeApi.js — simula latencia de red
+const fakeApi = {
+  async guardar(tarea) {
+    await new Promise(r => setTimeout(r, 400)); // simula 400ms de latencia
+    if (Math.random() < 0.1) throw new Error("Error de red"); // falla 10%
+    return { ...tarea, id: Date.now() };
+  },
+
+  async cargar() {
+    await new Promise(r => setTimeout(r, 600));
+    return [
+      { id: 1, texto: "Revisar PR de Ana", completada: false },
+      { id: 2, texto: "Preparar demo del viernes", completada: true },
+    ];
+  },
+};
+
+// app.js
+const estado = {
+  tareas: [],
+  cargando: false,
+};
+
+function renderizar() {
+  const lista = document.querySelector("#lista-tareas");
+  const conteo = document.querySelector("#conteo");
+
+  lista.innerHTML = "";  // limpiar (OK aquí: no viene de usuario)
+
+  estado.tareas.forEach(tarea => {
+    const li = document.createElement("li");
+    li.dataset.id = tarea.id;
+    li.className  = tarea.completada ? "tarea tarea--completada" : "tarea";
+
+    const chk = document.createElement("input");
+    chk.type    = "checkbox";
+    chk.checked = tarea.completada;
+
+    const span = document.createElement("span");
+    span.textContent = tarea.texto;
+
+    const btnDel = document.createElement("button");
+    btnDel.textContent       = "×";
+    btnDel.className         = "btn-eliminar";
+    btnDel.dataset.idTarea   = tarea.id;
+
+    li.append(chk, span, btnDel);
+    lista.appendChild(li);
+  });
+
+  conteo.textContent = `${estado.tareas.filter(t => !t.completada).length} pendientes`;
+}
+
+async function agregarTarea(texto) {
+  const ui = document.querySelector("#btn-agregar");
+  ui.disabled = true;
+
+  try {
+    const nueva = await fakeApi.guardar({ texto, completada: false });
+    estado.tareas.unshift(nueva);
+    renderizar();
+  } catch (err) {
+    alert(`No se pudo guardar: ${err.message}`);
+  } finally {
+    ui.disabled = false;
+  }
+}
+
+async function iniciar() {
+  document.querySelector("#status").textContent = "Cargando…";
+  try {
+    estado.tareas = await fakeApi.cargar();
+    renderizar();
+    document.querySelector("#status").textContent = "";
+  } catch {
+    document.querySelector("#status").textContent = "Error al cargar tareas";
+  }
+}
+
+// Eventos (delegación)
+document.querySelector("#lista-tareas").addEventListener("click", e => {
+  const btnDel = e.target.closest(".btn-eliminar");
+  if (btnDel) {
+    const id = Number(btnDel.dataset.idTarea);
+    estado.tareas = estado.tareas.filter(t => t.id !== id);
+    renderizar();
+  }
+});
+
+document.querySelector("#form-nueva").addEventListener("submit", e => {
+  e.preventDefault();
+  const input = e.target.querySelector("input[name='texto']");
+  const texto = input.value.trim();
+  if (texto) {
+    agregarTarea(texto);
+    input.value = "";
+  }
+});
+
+iniciar();
+```
+
+---
+
+## Práctica
+
+<CodeEditor initialCode={`// Simula una fake API y encadena llamadas async/await
+
+function esperar(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function obtenerProductos() {
+  await esperar(200);
+  return [
+    { id: 1, nombre: "Laptop", precio: 800000 },
+    { id: 2, nombre: "Monitor", precio: 350000 },
+  ];
+}
+
+async function obtenerStock(productoId) {
+  await esperar(100);
+  const stocks = { 1: 5, 2: 12 };
+  return stocks[productoId] ?? 0;
+}
+
+// Tu tarea: usa Promise.all para obtener los productos
+// y el stock de cada uno en paralelo, luego muestra:
+// "Laptop: 5 unidades"
+// "Monitor: 12 unidades"
+
+async function main() {
+  const productos = await obtenerProductos();
+  // Tu código aquí
+}
+
+main();
+`} />

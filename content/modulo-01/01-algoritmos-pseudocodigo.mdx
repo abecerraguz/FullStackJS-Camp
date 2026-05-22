@@ -1,0 +1,243 @@
+---
+titulo: "Algoritmos, Inteligencia Artificial y PSeInt"
+descripcion: "Aprende a pensar algorítmicamente desde cero: qué es un algoritmo, cómo escribirlo en pseudocódigo y cómo usar IA como herramienta de apoyo."
+tipo: "teoria"
+modulo: 1
+duracion: "4h"
+objetivos:
+  - "Definir qué es un algoritmo y sus características esenciales."
+  - "Escribir pseudocódigo usando la sintaxis de PSeInt."
+  - "Aplicar variables, operadores aritméticos, condicionales y bucles."
+  - "Usar IA (ChatGPT, Copilot) para verificar y mejorar algoritmos."
+conceptosClave:
+  - "Algoritmo"
+  - "Pseudocódigo"
+  - "Variable"
+  - "Condicional"
+  - "Bucle / ciclo"
+  - "Dry run (trazado manual)"
+recursos:
+  - { nombre: "PSeInt — Descarga oficial", url: "https://pseint.sourceforge.net/" }
+  - { nombre: "Visualgo — Visualización de algoritmos", url: "https://visualgo.net/es" }
+---
+
+# Algoritmos, IA y PSeInt
+
+Esta guía está pensada para que la uses como **material de consulta** durante el módulo. No necesitas experiencia previa en programación: la idea es acompañarte paso a paso desde **cero lógica** hasta tus **primeros algoritmos** en PSeInt, y mostrarte cómo la **inteligencia artificial (IA)** puede ayudarte en el proceso.
+
+---
+
+## 1. ¿Qué es un algoritmo?
+
+Un **algoritmo** es una lista de pasos ordenados que sirve para resolver un problema o realizar una tarea. Es como una **receta de cocina**:
+
+- Tiene **ingredientes** (datos de entrada).
+- Tiene **pasos** (proceso).
+- Tiene un **plato final** (salida).
+
+Un algoritmo debe:
+
+| Propiedad | Descripción |
+|-----------|-------------|
+| **Entrada** | Los datos con los que trabajará (notas, edades, precios). |
+| **Proceso** | Los pasos que se realizan con esos datos. |
+| **Salida** | El resultado que se obtiene (promedio, mensaje, total). |
+| **Claridad** | Cada paso debe entenderse sin ambigüedades. |
+| **Finitud** | No puede ejecutarse para siempre; en algún momento termina. |
+
+---
+
+## 2. ¿Qué es el pseudocódigo?
+
+El **pseudocódigo** es una forma de escribir algoritmos usando palabras en español (o cualquier idioma), sin preocuparte por la sintaxis exacta de un lenguaje de programación. Se centra en la **lógica**, no en los detalles técnicos.
+
+**Ejemplo:** Calcular si un número es par o impar.
+
+```
+Inicio
+  Escribir "Ingresa un número:"
+  Leer numero
+  Si numero MOD 2 = 0 Entonces
+    Escribir "El número es par"
+  SiNo
+    Escribir "El número es impar"
+  FinSi
+Fin
+```
+
+---
+
+## 3. PSeInt — Primeros pasos
+
+**PSeInt** (Pseudo Intérprete) es una herramienta gratuita que te permite escribir pseudocódigo en español y **ejecutarlo** para ver el resultado.
+
+### Estructura básica de un programa en PSeInt
+
+```
+Proceso NombreDelAlgoritmo
+  // aquí va el código
+FinProceso
+```
+
+### Variables y tipos de datos
+
+```
+Proceso EjemploVariables
+  Definir nombre Como Caracter
+  Definir edad Como Entero
+  Definir promedio Como Real
+
+  nombre <- "Ana"
+  edad <- 20
+  promedio <- 6.5
+
+  Escribir "Hola, ", nombre, ". Tienes ", edad, " años."
+  Escribir "Tu promedio es: ", promedio
+FinProceso
+```
+
+<Callout type="tip">
+El operador `<-` es el de **asignación** en PSeInt. Significa "guarda este valor en la variable".
+</Callout>
+
+---
+
+## 4. Operadores
+
+### Aritméticos
+
+| Operador | Significado | Ejemplo |
+|----------|-------------|---------|
+| `+` | Suma | `a + b` |
+| `-` | Resta | `a - b` |
+| `*` | Multiplicación | `a * b` |
+| `/` | División | `a / b` |
+| `MOD` | Módulo (resto) | `10 MOD 3 = 1` |
+| `^` | Potencia | `2 ^ 8 = 256` |
+
+### Relacionales (para comparar)
+
+| Operador | Significado |
+|----------|-------------|
+| `=` | Igual a |
+| `<>` | Distinto de |
+| `<` / `>` | Menor / Mayor que |
+| `<=` / `>=` | Menor o igual / Mayor o igual |
+
+---
+
+## 5. Condicionales
+
+Los condicionales permiten que el algoritmo tome **decisiones**.
+
+### Si simple
+
+```
+Si condicion Entonces
+  // código si se cumple
+FinSi
+```
+
+### Si con alternativa
+
+```
+Si edad >= 18 Entonces
+  Escribir "Mayor de edad"
+SiNo
+  Escribir "Menor de edad"
+FinSi
+```
+
+### Si encadenado (else if)
+
+```
+Si nota >= 6 Entonces
+  Escribir "Aprobado"
+SiNo Si nota >= 4 Entonces
+  Escribir "Recuperación"
+SiNo
+  Escribir "Reprobado"
+FinSi
+```
+
+---
+
+## 6. Bucles (ciclos)
+
+Los bucles permiten **repetir** un bloque de código.
+
+### Mientras (while)
+
+```
+Mientras condicion Hacer
+  // código que se repite
+FinMientras
+```
+
+### Para (for)
+
+```
+Para i <- 1 Hasta 10 Hacer
+  Escribir i
+FinPara
+```
+
+### Ejemplo: Factorial de un número
+
+```
+Proceso Factorial
+  Definir n, resultado, i Como Entero
+  Escribir "Ingresa un número:"
+  Leer n
+  resultado <- 1
+  Para i <- 1 Hasta n Hacer
+    resultado <- resultado * i
+  FinPara
+  Escribir "El factorial de ", n, " es ", resultado
+FinProceso
+```
+
+---
+
+## 7. IA como herramienta de aprendizaje
+
+Puedes usar **ChatGPT** o **GitHub Copilot** para:
+
+- **Verificar** un algoritmo que escribiste: *"¿Hay algún error en este pseudocódigo?"*
+- **Traducir** pseudocódigo a JavaScript: *"Convierte este algoritmo a JavaScript."*
+- **Depurar** errores: *"Este algoritmo debería calcular el factorial pero devuelve 0. ¿Por qué?"*
+- **Generar** ejercicios de práctica: *"Dame 5 ejercicios de algoritmos para principiantes."*
+
+<Callout type="warning">
+La IA puede cometer errores. Siempre **verifica** el resultado trazando el algoritmo manualmente con datos de prueba antes de aceptarlo como correcto.
+</Callout>
+
+---
+
+## 8. Ejercicio de práctica
+
+Escribe un algoritmo en PSeInt que:
+
+1. Solicite al usuario ingresar 5 notas (entre 1 y 7).
+2. Calcule el promedio de las 5 notas.
+3. Muestre el promedio y un mensaje indicando si el estudiante **aprueba** (promedio ≥ 4.0) o **reprueba**.
+
+<CodeEditor
+  initialCode={`// Ejercicio adaptado a JavaScript
+// Simula ingresar 5 notas y calcula el promedio
+
+function calcularPromedio(notas) {
+  // TODO: implementar
+  // 1. Sumar todas las notas
+  // 2. Dividir por la cantidad de notas
+  // 3. Retornar el promedio
+}
+
+function solution() {
+  const notas = [5.5, 6.0, 4.5, 7.0, 5.0];
+  const promedio = calcularPromedio(notas);
+  const estado = promedio >= 4.0 ? "Aprueba" : "Reprueba";
+  return \`Promedio: \${promedio.toFixed(1)} → \${estado}\`;
+}
+`}
+/>

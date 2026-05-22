@@ -1,0 +1,296 @@
+---
+titulo: "POO en JavaScript (Parte I)"
+descripcion: "Clases, instancias y los cuatro pilares: encapsulamiento, herencia, polimorfismo y abstracción."
+tipo: "teoria"
+modulo: 4
+duracion: "6h"
+objetivos:
+  - "Comprender la diferencia entre objeto literal, función constructora y class."
+  - "Crear clases con constructor, propiedades y métodos."
+  - "Implementar herencia con extends y super."
+  - "Aplicar polimorfismo mediante override de métodos."
+  - "Encapsular estado interno con campos privados (#)."
+conceptosClave:
+  - "Clase"
+  - "Instancia"
+  - "Constructor"
+  - "Herencia"
+  - "Polimorfismo"
+  - "Encapsulamiento"
+  - "Campos privados"
+recursos:
+  - { nombre: "MDN — Classes", url: "https://developer.mozilla.org/es/docs/Web/JavaScript/Reference/Classes" }
+  - { nombre: "JavaScript.info — Clases", url: "https://es.javascript.info/classes" }
+---
+
+# POO en JavaScript (Parte I)
+
+La **Programación Orientada a Objetos (POO)** es un paradigma que organiza el código en torno a **objetos**: entidades que combinan estado (datos) y comportamiento (métodos).
+
+<Callout type="info">
+JavaScript no es un lenguaje de clases clásico — usa **prototipos**. La sintaxis `class` es azúcar sintáctico sobre el sistema de prototipos, pero el resultado práctico es idéntico a otros lenguajes OO.
+</Callout>
+
+## Evolución: de objeto literal a class
+
+### 1) Objeto literal `{}`
+
+La forma más simple. Sirve para **una sola instancia**:
+
+```javascript
+const usuario = {
+  nombre: "Ana",
+  correo: "ana@email.com",
+  mostrarInfo() {
+    return `Usuario: ${this.nombre} — ${this.correo}`;
+  },
+};
+
+console.log(usuario.mostrarInfo()); // "Usuario: Ana — ana@email.com"
+```
+
+**Problema:** si necesitas 100 usuarios, tienes que copiar ese objeto 100 veces.
+
+### 2) Función constructora (ES5)
+
+Una **función que actúa como molde** — se invoca con `new`:
+
+```javascript
+function Usuario(nombre, correo) {
+  this.nombre = nombre;
+  this.correo = correo;
+}
+
+// Los métodos van en prototype para que los compartan todas las instancias
+Usuario.prototype.mostrarInfo = function () {
+  return `Usuario: ${this.nombre} — ${this.correo}`;
+};
+
+const u1 = new Usuario("Ana", "ana@email.com");
+const u2 = new Usuario("Luis", "luis@email.com");
+
+console.log(u1.mostrarInfo()); // "Usuario: Ana — ana@email.com"
+console.log(u2.mostrarInfo()); // "Usuario: Luis — luis@email.com"
+```
+
+### 3) `class` (ES6+) — la forma moderna
+
+La **clase** agrupa constructor + métodos en un bloque limpio y legible:
+
+```javascript
+class Usuario {
+  constructor(nombre, correo) {
+    this.nombre = nombre;
+    this.correo = correo;
+  }
+
+  mostrarInfo() {
+    return `Usuario: ${this.nombre} — ${this.correo}`;
+  }
+}
+
+const u = new Usuario("Ana", "ana@email.com");
+console.log(u.mostrarInfo()); // "Usuario: Ana — ana@email.com"
+console.log(u instanceof Usuario); // true
+```
+
+> **Regla de oro:** usa siempre `class`. La función constructora es código legacy que encontrarás en proyectos antiguos.
+
+---
+
+## Los 4 pilares de POO
+
+### Pilar 1: Encapsulamiento
+
+Ocultar el estado interno del objeto y exponerlo solo a través de métodos controlados.
+
+```javascript
+class CuentaBancaria {
+  #saldo; // campo privado — no accesible desde fuera
+
+  constructor(saldoInicial) {
+    this.#saldo = saldoInicial > 0 ? saldoInicial : 0;
+  }
+
+  depositar(monto) {
+    if (monto <= 0) return "Monto inválido";
+    this.#saldo += monto;
+    return `Depósito OK. Saldo: $${this.#saldo}`;
+  }
+
+  retirar(monto) {
+    if (monto <= 0) return "Monto inválido";
+    if (monto > this.#saldo) return "Fondos insuficientes";
+    this.#saldo -= monto;
+    return `Retiro OK. Saldo: $${this.#saldo}`;
+  }
+
+  get saldo() {
+    return this.#saldo; // getter: lectura controlada
+  }
+}
+
+const cuenta = new CuentaBancaria(10000);
+console.log(cuenta.saldo);          // 10000
+console.log(cuenta.depositar(2500)); // "Depósito OK. Saldo: $12500"
+console.log(cuenta.retirar(99999));  // "Fondos insuficientes"
+
+// cuenta.#saldo  → ❌ SyntaxError: private field
+```
+
+### Pilar 2: Herencia
+
+Una clase **extiende** otra, reutilizando su código y agregando o modificando comportamiento:
+
+```javascript
+class Usuario {
+  constructor(nombre, correo) {
+    this.nombre = nombre;
+    this.correo = correo;
+  }
+
+  mostrarInfo() {
+    return `Usuario: ${this.nombre}`;
+  }
+}
+
+class Administrador extends Usuario {
+  constructor(nombre, correo, permiso) {
+    super(nombre, correo); // llama al constructor padre
+    this.permiso = permiso;
+  }
+
+  mostrarInfo() {
+    // override: reemplaza el método del padre
+    const estado = this.permiso ? "activo" : "inactivo";
+    return `Admin: ${this.nombre} (permiso ${estado})`;
+  }
+}
+
+const admin = new Administrador("Lucas", "lucas@email.com", true);
+console.log(admin.mostrarInfo()); // "Admin: Lucas (permiso activo)"
+console.log(admin instanceof Administrador); // true
+console.log(admin instanceof Usuario);       // true — hereda la cadena
+```
+
+<Callout type="warning">
+`super()` **debe llamarse antes de usar `this`** dentro del constructor de una clase derivada. Omitirlo lanza `ReferenceError`.
+</Callout>
+
+### Pilar 3: Polimorfismo
+
+El mismo método produce **resultados distintos** según el tipo de objeto:
+
+```javascript
+class Vehiculo {
+  constructor(marca, modelo) {
+    this.marca = marca;
+    this.modelo = modelo;
+  }
+  describir() {
+    return `Vehículo: ${this.marca} ${this.modelo}`;
+  }
+}
+
+class Auto extends Vehiculo {
+  constructor(marca, modelo, puertas) {
+    super(marca, modelo);
+    this.puertas = puertas;
+  }
+  describir() {
+    return `Auto: ${this.marca} ${this.modelo} | ${this.puertas} puertas`;
+  }
+}
+
+class Moto extends Vehiculo {
+  constructor(marca, modelo, cilindrada) {
+    super(marca, modelo);
+    this.cilindrada = cilindrada;
+  }
+  describir() {
+    return `Moto: ${this.marca} ${this.modelo} | ${this.cilindrada}cc`;
+  }
+}
+
+const flota = [
+  new Auto("Toyota", "Corolla", 4),
+  new Moto("Yamaha", "R6", 600),
+  new Auto("Honda", "Civic", 4),
+];
+
+// Polimorfismo: la misma llamada `.describir()` produce salida distinta
+flota.forEach(v => console.log(v.describir()));
+// "Auto: Toyota Corolla | 4 puertas"
+// "Moto: Yamaha R6 | 600cc"
+// "Auto: Honda Civic | 4 puertas"
+```
+
+### Pilar 4: Abstracción
+
+Exponer solo lo necesario y ocultar la complejidad interna. En JavaScript se logra con campos privados y métodos públicos bien diseñados:
+
+```javascript
+class Notificador {
+  #destinatarios = [];
+
+  agregar(email) {
+    if (!email.includes("@")) throw new Error("Email inválido");
+    this.#destinatarios.push(email);
+  }
+
+  // El cómo se envía es un detalle oculto
+  #formatear(mensaje) {
+    return `[${new Date().toLocaleDateString("es-CL")}] ${mensaje}`;
+  }
+
+  enviar(mensaje) {
+    const texto = this.#formatear(mensaje);
+    // En producción: llamaría a un servicio de email
+    this.#destinatarios.forEach(d => console.log(`→ ${d}: ${texto}`));
+  }
+}
+
+const notif = new Notificador();
+notif.agregar("ana@email.com");
+notif.agregar("luis@email.com");
+notif.enviar("Tu pedido fue despachado");
+// → ana@email.com: [20/05/2026] Tu pedido fue despachado
+// → luis@email.com: [20/05/2026] Tu pedido fue despachado
+```
+
+---
+
+## Métodos estáticos
+
+Los métodos `static` pertenecen a la **clase**, no a las instancias:
+
+```javascript
+class Matematica {
+  static sumar(a, b) { return a + b; }
+  static PI = 3.14159;
+}
+
+console.log(Matematica.sumar(3, 4)); // 7
+console.log(Matematica.PI);          // 3.14159
+
+// new Matematica().sumar(1, 2) → TypeError: no es método de instancia
+```
+
+---
+
+## Práctica
+
+<CodeEditor initialCode={`// Crea una clase Producto con:
+// - nombre, precio (privado con #)
+// - método aplicarDescuento(porcentaje) que modifique el precio
+// - getter para obtener el precio
+// - método descripcion() que retorne "nombre: $precio"
+
+class Producto {
+  // Tu código aquí
+}
+
+const laptop = new Producto("Laptop", 800000);
+laptop.aplicarDescuento(10); // descuento 10%
+console.log(laptop.descripcion()); // "Laptop: $720000"
+`} expected="Laptop: $720000" />

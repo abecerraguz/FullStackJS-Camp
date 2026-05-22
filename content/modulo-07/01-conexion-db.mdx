@@ -1,0 +1,167 @@
+---
+titulo: "Conexión a PostgreSQL"
+tipo: teoria
+duracion: 4h
+objetivos:
+  - Distinguir entre Client y Pool, y saber cuándo usar cada uno
+  - Configurar la conexión usando variables de entorno y connection string
+  - Ejecutar la primera consulta con Pool.query()
+  - Manejar el cierre correcto del pool y errores no capturados
+recursos:
+  - { nombre: "node-postgres — documentación oficial", url: "https://node-postgres.com/" }
+  - { nombre: "pg en npm", url: "https://www.npmjs.com/package/pg" }
+---
+
+# Conexión a PostgreSQL desde Node.js
+
+El paquete **`pg`** (node-postgres) es el driver oficial para conectar Node.js con PostgreSQL. Es la base de cualquier integración: lo usan directamente, Sequelize, Prisma y la mayoría de los ORMs.
+
+## Client vs Pool
+
+`pg` expone dos formas de conectarse:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Client                         Pool                    │
+│  ─────────────────────          ─────────────────────── │
+│  Una sola conexión              Varias conexiones       │
+│  Manual connect/end             Gestión automática      │
+│  Para scripts o migraciones     Para servidores HTTP    │
+│  client.connect()               pool.query()            │
+│  client.end()                   pool.end()              │
+└─────────────────────────────────────────────────────────┘
+```
+
+En un servidor Express **siempre** usa `Pool`. Con `Client`, cada petición abriría y cerraría una conexión TCP, lo que es lento y agota los recursos de PostgreSQL.
+
+## Instalación
+
+```bash
+npm install pg dotenv
+```
+
+<Callout type="tip">
+**`--env-file` — alternativa nativa de Node.js (v20.6+, estable en v22+)**
+
+Desde Node v20.6 puedes leer el `.env` sin instalar `dotenv`. Úsalo directamente: `node --env-file=.env server.js`, o en `package.json`: `"start": "node --env-file=.env server.js"`. Node v22.9+ también incluye `--env-file-if-exists` para archivos opcionales.
+
+Si optas por esta alternativa, **elimina** `import dotenv` y `dotenv.config()` del código. `dotenv` sigue siendo útil cuando necesitas cargar múltiples archivos `.env` o hacerlo dinámicamente en runtime.
+</Callout>
+
+## Variables de entorno
+
+Crea el archivo `.env` en la raíz del proyecto:
+
+```bash
+# Opción A — connection string (formato URI)
+CONNECTION_STRING=postgresql://postgres:postgres@localhost:5432/jeans
+
+# Opción B — parámetros individuales (más explícita)
+# DB_USER=postgres
+# DB_HOST=localhost
+# DB_DATABASE=jeans
+# DB_PASSWORD=postgres
+# DB_PORT=5432
+```
+
+<Callout type="warning">
+Nunca subas el `.env` al repositorio. Añade `.env` a tu `.gitignore` y comparte solo el `.env.sample` con valores de ejemplo.
+</Callout>
+
+## Configurar el Pool
+
+```javascript
+// db/db.js
+import pg from "pg";
+import dotenv from "dotenv";
+
+const { Pool } = pg;
+dotenv.config();
+
+export const pool = new Pool({
+  // Opción A — connection string
+  connectionString: process.env.CONNECTION_STRING,
+
+  // Opción B — parámetros individuales (descomenta si prefieres esta forma)
+  // user:     process.env.DB_USER,
+  // host:     process.env.DB_HOST,
+  // database: process.env.DB_DATABASE,
+  // password: process.env.DB_PASSWORD,
+  // port:     process.env.DB_PORT,
+});
+```
+
+## Primera consulta
+
+```javascript
+// index.js
+import { pool } from "./db/db.js";
+
+const obtenerRopa = async () => {
+  try {
+    const res = await pool.query("SELECT * FROM ropa");
+    console.log(res.rows); // array de objetos
+  } catch (error) {
+    console.error("Error en la consulta:", error.message);
+  } finally {
+    // Siempre cierra el pool al terminar scripts de larga duración
+    await pool.end();
+    console.log("Conexión cerrada.");
+  }
+};
+
+obtenerRopa();
+```
+
+### Anatomía del resultado
+
+```javascript
+const res = await pool.query("SELECT * FROM ropa");
+
+res.rows;      // → array de objetos: [{ id: 1, nombre: 'Camiseta', ... }]
+res.rowCount;  // → número de filas afectadas
+res.fields;    // → metadata de columnas
+```
+
+## Manejo de errores del proceso
+
+En scripts Node.js es buena práctica registrar errores no capturados antes de que cierren el proceso:
+
+```javascript
+// Excepción sincrónica sin try/catch
+process.on("uncaughtException", (error) => {
+  console.error("Error no capturado:", error.message);
+  pool.end().finally(() => process.exit(1));
+});
+
+// Promise rechazada sin .catch()
+process.on("unhandledRejection", (reason) => {
+  console.error("Promesa rechazada sin capturar:", reason);
+});
+```
+
+<Callout type="info">
+En servidores Express, estos handlers son especialmente importantes: si el pool pierde la conexión en producción, quieres saber exactamente por qué antes de que el proceso muera.
+</Callout>
+
+## Estructura del proyecto
+
+```
+01-conexion/
+├── .env                 ← variables de entorno (no en git)
+├── .env.sample          ← plantilla para el equipo
+├── db/
+│   └── db.js            ← configuración del Pool
+├── index.js             ← punto de entrada
+└── package.json
+```
+
+## Resumen
+
+| Concepto | Detalle |
+|----------|---------|
+| Driver | `pg` (node-postgres) |
+| Clase recomendada | `Pool` para servidores, `Client` para scripts |
+| Configuración | `dotenv` + `.env` para credenciales |
+| Formato URI | `postgresql://user:pass@host:port/db` |
+| Resultado de query | `res.rows` (array), `res.rowCount` (número) |

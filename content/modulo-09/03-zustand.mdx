@@ -1,0 +1,305 @@
+---
+titulo: "Gestión de Estado con Zustand"
+tipo: practica
+duracion: 6h
+objetivos:
+  - Crear stores tipados con Zustand y acceder a ellos desde cualquier componente
+  - Implementar el middleware persist para mantener la sesión entre recargas
+  - Usar selectores y useShallow para evitar re-renders innecesarios
+  - Manejar acciones asíncronas (fetch a la API) directamente desde el store
+recursos:
+  - { nombre: "Zustand Docs", url: "https://zustand.docs.pmnd.rs/" }
+  - { nombre: "Zustand Persist Middleware", url: "https://zustand.docs.pmnd.rs/integrations/persisting-store-data" }
+  - { nombre: "Zustand DevTools", url: "https://zustand.docs.pmnd.rs/guides/devtools" }
+  - { nombre: "React Context vs Zustand", url: "https://react.dev/learn/passing-data-deeply-with-context" }
+---
+
+# Gestión de Estado con Zustand
+
+Zustand es una librería de gestión de estado global minimalista para React. A diferencia de Redux, no requiere boilerplate de actions, reducers ni dispatchers. A diferencia de Context, no produce re-renders en cascada.
+
+## ¿Cuándo necesito estado global?
+
+| Situación | Solución recomendada |
+|---|---|
+| Estado local de un componente | `useState` |
+| Estado compartido entre padre e hijo cercano | Props |
+| Datos compartidos entre componentes distantes | `Context` o Zustand |
+| Estado complejo con muchas acciones | **Zustand** |
+| Auth, carrito, tema, configuración global | **Zustand + persist** |
+| Estado servidor (caché, sincronización) | React Query / SWR |
+
+## Comparación de herramientas
+
+| Característica | useState + Props | Context API | **Zustand** | Redux Toolkit |
+|---|---|---|---|---|
+| Configuración | Ninguna | Mínima | **Mínima** | Media |
+| Boilerplate | Ninguno | Bajo | **Muy bajo** | Alto |
+| Re-renders | Controlado | Problemático | **Optimizado** | Optimizado |
+| DevTools | ✗ | ✗ | **✓** | ✓ |
+| Persist | ✗ | ✗ | **✓ nativo** | Con Redux Persist |
+| Curva de aprendizaje | Ninguna | Baja | **Baja** | Alta |
+
+## Instalación
+
+```bash
+npm install zustand
+```
+
+## Ejemplo 1 — Store básico con contador
+
+```ts
+// store/useCounterStore.ts
+import { create } from 'zustand';
+import { devtools } from 'zustand/middleware';
+
+interface CounterState {
+  count: number;
+  increment: () => void;
+  decrement: () => void;
+  reset: () => void;
+}
+
+export const useCounterStore = create<CounterState>()(
+  devtools(
+    (set) => ({
+      count: 0,
+      increment: () => set((state) => ({ count: state.count + 1 })),
+      decrement: () => set((state) => ({ count: state.count - 1 })),
+      reset: () => set({ count: 0 }),
+    }),
+    { name: 'CounterStore' } // aparece en Redux DevTools
+  )
+);
+
+// Uso en cualquier componente:
+function Counter() {
+  const count = useCounterStore((state) => state.count);
+  const { increment, decrement, reset } = useCounterStore();
+
+  return (
+    <div>
+      <button onClick={decrement}>-</button>
+      <span>{count}</span>
+      <button onClick={increment}>+</button>
+      <button onClick={reset}>Reset</button>
+    </div>
+  );
+}
+```
+
+## Ejemplo 2 — Auth Store con persist
+
+```ts
+// store/useAuthStore.ts
+import { create } from 'zustand';
+import { persist, devtools } from 'zustand/middleware';
+
+interface User {
+  id: number;
+  nombre: string;
+  email: string;
+  rol: 'admin' | 'usuario';
+}
+
+interface AuthState {
+  user: User | null;
+  accessToken: string | null;
+  isAuthenticated: boolean;
+  login: (user: User, token: string) => void;
+  logout: () => void;
+}
+
+export const useAuthStore = create<AuthState>()(
+  devtools(
+    persist(
+      (set) => ({
+        user: null,
+        accessToken: null,
+        isAuthenticated: false,
+
+        login: (user, accessToken) =>
+          set({ user, accessToken, isAuthenticated: true }),
+
+        logout: () =>
+          set({ user: null, accessToken: null, isAuthenticated: false }),
+      }),
+      {
+        name: 'auth-storage', // clave en localStorage
+        // Persiste solo lo que necesitas
+        partialize: (state) => ({
+          user: state.user,
+          accessToken: state.accessToken,
+          isAuthenticated: state.isAuthenticated,
+        }),
+      }
+    ),
+    { name: 'AuthStore' }
+  )
+);
+
+// Uso:
+function Navbar() {
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
+
+  return (
+    <nav>
+      {user && <span>Hola, {user.nombre}</span>}
+      <button onClick={logout}>Salir</button>
+    </nav>
+  );
+}
+```
+
+<Callout type="tip">
+`persist` guarda el estado en `localStorage` automáticamente. Al recargar la página, el store se hidrata con los datos guardados. Ideal para auth, preferencias de tema y datos de sesión.
+</Callout>
+
+## Ejemplo 3 — Store con acciones async y selectores
+
+```ts
+// store/useGuitarStore.ts
+import { create } from 'zustand';
+import { devtools } from 'zustand/middleware';
+
+interface Guitarra {
+  id: number;
+  nombre: string;
+  tipo: 'electrica' | 'acustica' | 'clasica';
+  disponible: boolean;
+  precio: number;
+}
+
+interface GuitarState {
+  items: Guitarra[];
+  loading: boolean;
+  error: string | null;
+  // Acciones
+  fetchAll: () => Promise<void>;
+  create: (data: Omit<Guitarra, 'id'>) => Promise<void>;
+  remove: (id: number) => Promise<void>;
+}
+
+const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+
+export const useGuitarStore = create<GuitarState>()(
+  devtools(
+    (set, get) => ({
+      items: [],
+      loading: false,
+      error: null,
+
+      fetchAll: async () => {
+        set({ loading: true, error: null });
+        try {
+          const res = await fetch(`${API}/api/guitarras`);
+          if (!res.ok) throw new Error('Error al cargar guitarras');
+          const data: Guitarra[] = await res.json();
+          set({ items: data, loading: false });
+        } catch (err) {
+          set({ error: (err as Error).message, loading: false });
+        }
+      },
+
+      create: async (data) => {
+        const res = await fetch(`${API}/api/guitarras`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        if (!res.ok) throw new Error('Error al crear guitarra');
+        const nueva: Guitarra = await res.json();
+        // Actualiza el store localmente sin re-fetch
+        set((state) => ({ items: [...state.items, nueva] }));
+      },
+
+      remove: async (id) => {
+        await fetch(`${API}/api/guitarras/${id}`, { method: 'DELETE' });
+        // Actualiza el store localmente
+        set((state) => ({ items: state.items.filter((g) => g.id !== id) }));
+      },
+    }),
+    { name: 'GuitarStore' }
+  )
+);
+```
+
+## Selectores para evitar re-renders
+
+Por defecto, un componente que llama a `useGuitarStore()` se re-renderiza cuando **cualquier** propiedad del store cambia. Los **selectores** evitan esto:
+
+```tsx
+import { useShallow } from 'zustand/react/shallow';
+
+// ✗ MAL: re-renderiza si CUALQUIER cosa del store cambia
+function BadComponent() {
+  const { items, loading } = useGuitarStore();
+  return <div>{items.length}</div>;
+}
+
+// ✓ BIEN: re-renderiza solo si items o loading cambian
+function GoodComponent() {
+  const { items, loading } = useGuitarStore(
+    useShallow((state) => ({ items: state.items, loading: state.loading }))
+  );
+  return <div>{items.length}</div>;
+}
+
+// ✓ TAMBIÉN BIEN: selector de un solo valor (sin useShallow)
+function ItemCount() {
+  const count = useGuitarStore((state) => state.items.length);
+  return <span>{count} guitarras</span>;
+}
+```
+
+<Callout type="warning">
+`useShallow` es necesario cuando el selector retorna un **objeto nuevo** en cada render (desestructuración de múltiples props). Para un selector que retorna un valor primitivo o una referencia estable, no es necesario.
+</Callout>
+
+## Integración con componentes de Next.js
+
+```tsx
+// app/dashboard/guitarras/page.tsx
+'use client';
+
+import { useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
+import { useGuitarStore } from '@/store/useGuitarStore';
+import { useAuthStore } from '@/store/useAuthStore';
+
+export default function GuitarrasPage() {
+  const { items, loading, error, fetchAll } = useGuitarStore(
+    useShallow((s) => ({
+      items: s.items,
+      loading: s.loading,
+      error: s.error,
+      fetchAll: s.fetchAll,
+    }))
+  );
+  const user = useAuthStore((s) => s.user);
+
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
+
+  if (loading) return <p>Cargando...</p>;
+  if (error) return <p>Error: {error}</p>;
+
+  return (
+    <div>
+      <h1>Guitarras ({items.length})</h1>
+      {user?.rol === 'admin' && (
+        <button>+ Nueva guitarra</button>
+      )}
+      {/* tabla de guitarras */}
+    </div>
+  );
+}
+```
+
+## Ejercicios propuestos
+
+1. Crea un `useUiStore` con `sidebarOpen: boolean` y los toggles correspondientes. Conecta el botón hamburguesa del Navbar con ese store.
+2. Agrega una acción `update(id, data)` a `useGuitarStore` que llame a `PUT /api/guitarras/:id`.
+3. Añade el devtools middleware a todos tus stores y abre Redux DevTools en el navegador para observar las acciones en tiempo real.
