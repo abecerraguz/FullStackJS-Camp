@@ -21,10 +21,23 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug, tema: temaSlug } = await params;
+  const modulo = getModulo(slug);
   const tema = getTema(slug, temaSlug);
   if (!tema) return {};
+  const description = `${tema.tipo === "proyecto" ? "Proyecto integrador" : "Tema"} del ${modulo?.titulo ?? "programa Full Stack JS"}: ${tema.titulo}. Duración: ${tema.duracion}.`;
   return {
-    title: `${tema.titulo} · Full Stack JS`,
+    title: tema.titulo,
+    description,
+    openGraph: {
+      title: `${tema.titulo} · Full Stack JS`,
+      description,
+      type: "article",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${tema.titulo} · Full Stack JS`,
+      description,
+    },
   };
 }
 
@@ -46,7 +59,7 @@ export default async function TemaPage({ params }: Props) {
   return (
     <div className="flex min-h-full">
       {/* Columna izquierda: navegación de temas del módulo */}
-      <aside className="w-52 shrink-0 hidden lg:block border-r border-[var(--sidebar-border)] p-4 sticky top-0 h-full overflow-y-auto">
+      <aside className="w-52 shrink-0 hidden lg:block border-r border-(--sidebar-border) p-4 sticky top-0 h-full overflow-y-auto">
         <TemasNavigation modulo={modulo} />
       </aside>
 

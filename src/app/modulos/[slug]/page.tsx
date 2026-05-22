@@ -18,8 +18,19 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const modulo = getModulo(slug);
   if (!modulo) return {};
   return {
-    title: `${modulo.titulo} · Full Stack JS`,
+    title: modulo.titulo,
     description: modulo.descripcion,
+    keywords: modulo.stack,
+    openGraph: {
+      title: `${modulo.titulo} · Full Stack JS`,
+      description: modulo.descripcion,
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${modulo.titulo} · Full Stack JS`,
+      description: modulo.descripcion,
+    },
   };
 }
 
@@ -30,8 +41,38 @@ export default async function ModuloPage({ params }: Props) {
 
   const { jsx } = await getModuloContent(slug);
 
+  const baseUrl =
+    process.env.NEXT_PUBLIC_SITE_URL || "https://fullstack.factorit.cl";
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Course",
+    name: modulo.titulo,
+    description: modulo.descripcion,
+    url: `${baseUrl}/modulos/${modulo.slug}`,
+    provider: {
+      "@type": "Organization",
+      name: "FullStackJS Camp",
+      url: baseUrl,
+    },
+    timeRequired: `PT${modulo.duracion.replace("h", "H")}`,
+    inLanguage: "es",
+    hasCourseInstance: modulo.temas.map((t, i) => ({
+      "@type": "CourseInstance",
+      name: t.titulo,
+      url: `${baseUrl}/modulos/${modulo.slug}/${t.slug}`,
+      courseMode: "online",
+      position: i + 1,
+    })),
+  };
+
   return (
-    <div className="flex min-h-full">
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <div className="flex min-h-full">
       {/* Sidebar de temas (si el módulo está disponible y tiene temas) */}
       {modulo.disponible && modulo.temas.length > 0 && (
         <aside className="w-52 shrink-0 hidden lg:block border-r border-zinc-200 dark:border-zinc-800 p-4 sticky top-0 h-full overflow-y-auto">
@@ -65,5 +106,6 @@ export default async function ModuloPage({ params }: Props) {
         </div>
       </article>
     </div>
+    </>
   );
 }
