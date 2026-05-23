@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://fullstack.abecerraguz.com";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://fscamp.abecerraguz.com";
 const SITE_NAME = "FullStackJS Camp";
 const SITE_DESCRIPTION =
   "Programa formativo Desarrollo de Aplicaciones Full Stack JavaScript — 9 módulos desde fundamentos hasta despliegue en nube.";
