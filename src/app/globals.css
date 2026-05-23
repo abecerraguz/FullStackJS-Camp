@@ -194,6 +194,13 @@ body {
   margin: 2.5rem 0;
 }
 
+/* Tables — reset del display:block que inyecta @tailwindcss/typography */
+.prose table {
+  display: table;
+  width: 100%;
+  white-space: normal;
+}
+
 /* Dark mode prose adjustments */
 .dark .prose {
   color: var(--prose-body);

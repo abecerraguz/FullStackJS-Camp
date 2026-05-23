@@ -37,7 +37,7 @@ export const mdxComponents: Record<string, (props: Record<string, unknown>) => J
   // Tablas GFM con scroll horizontal en móvil
   table: (props) => (
     <div className="overflow-x-auto my-6 rounded-lg border border-zinc-200 dark:border-zinc-700 not-prose">
-      <table className="w-full text-sm text-left border-collapse">{props.children as ReactNode}</table>
+      <table style={{ display: "table", width: "100%", whiteSpace: "normal" }} className="text-sm text-left border-collapse">{props.children as ReactNode}</table>
     </div>
   ),
   thead: (props) => (
