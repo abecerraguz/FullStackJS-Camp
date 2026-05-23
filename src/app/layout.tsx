@@ -47,6 +47,9 @@ export const metadata: Metadata = {
       "max-image-preview": "large",
     },
   },
+  icons: {
+    icon: "/favicon.svg",
+  },
   openGraph: {
     type: "website",
     locale: "es_CL",
